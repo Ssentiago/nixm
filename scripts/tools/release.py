@@ -90,7 +90,11 @@ def build_and_create_release(previous_version: str, new_version: str, changelog:
     try:
         os.chdir(frontend_folder)
         subprocess.run(["bun", "run", "build"], check=True)
-        shutil.make_archive(temp_folder / "dist", "zip", frontend_folder, "dist")
+        shutil.make_archive(
+            temp_folder / "dist",
+            "zip",
+            frontend_folder / "dist",
+        )
 
         os.chdir(backend_folder)
         subprocess.run(["cargo", "build", "--release"], check=True)
