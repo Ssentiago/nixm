@@ -5,6 +5,7 @@ pub mod state;
 pub mod tokens;
 
 use std::env;
+use std::env::VarError;
 use tower_http::services::ServeDir;
 
 use crate::api::{auth};
@@ -17,13 +18,19 @@ use tracing_subscriber;
 async fn main() {
     dotenvy::dotenv().ok();
 
-    let static_dir = if std::env::var("DEBUG").is_ok() {
-        std::env::var("FRONTEND_DIR").unwrap()
-    } else {
-        "./dist".to_string()
+    let dev_frontend_dir = std::env::var("DEV_FRONTEND_DIR");
+
+    let static_dir = match dev_frontend_dir {
+        Ok(dir) => {
+            dir
+        }
+        Err(_) => {
+            "./dist".to_string()
+        }
     };
 
-    println!("{}", static_dir);
+
+    println!("USING ASSETS AT: {}", static_dir);
 
 
     tracing_subscriber::fmt::init();
@@ -38,13 +45,15 @@ async fn main() {
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
     let state = AppState { db: pool };
 
+    let backend_port = std::env::var("BACKEND_PORT").unwrap_or("3000".to_string());
+
     let app: Router = Router::new()
         .nest("/api/auth", auth::router())
         .fallback_service(ServeDir::new(&static_dir))
         .with_state(state)
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    println!("listening to 3000...");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    println!("listening to {backend_port}...");
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", backend_port) ).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
