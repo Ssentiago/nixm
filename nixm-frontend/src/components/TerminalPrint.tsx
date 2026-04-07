@@ -1,53 +1,52 @@
 import { useState, useEffect } from 'react';
-import styled from 'styled-components';
 
 interface Props {
-    lines: string[];
-    delay?: number;
+  lines: string[];
+  charDelay?: number;
+  lineDelay?: number;
 }
 
-const Container = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
+const TerminalPrint = ({ lines, charDelay = 40, lineDelay = 600 }: Props) => {
+  const [displayed, setDisplayed] = useState<string[]>([]);
+  const [currentLine, setCurrentLine] = useState(0);
+  const [currentChar, setCurrentChar] = useState(0);
 
-const Line = styled.span`
-    font-size: var(--fz-sm);
-    color: var(--green-mid);
-    animation: fadeIn 0.3s ease-in-out;
+  useEffect(() => {
+    if (currentLine >= lines.length) return;
 
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-
-    &::before {
-        content: '> ';
-        color: var(--green);
-    }
-`;
-
-const TerminalPrint = ({ lines, delay = 800 }: Props) => {
-    const [visible, setVisible] = useState<string[]>([]);
-
-    useEffect(() => {
-        lines.forEach((line, i) => {
-            setTimeout(() => {
-                setVisible(prev => [...prev, line]);
-            }, i * delay);
+    if (currentChar < lines[currentLine].length) {
+      const t = setTimeout(() => {
+        setDisplayed(prev => {
+          const next = [...prev];
+          next[currentLine] =
+            (next[currentLine] ?? '') + lines[currentLine][currentChar];
+          return next;
         });
-    }, []);
+        setCurrentChar(c => c + 1);
+      }, charDelay);
+      return () => clearTimeout(t);
+    } else {
+      const t = setTimeout(() => {
+        setCurrentLine(l => l + 1);
+        setCurrentChar(0);
+      }, lineDelay);
+      return () => clearTimeout(t);
+    }
+  }, [currentLine, currentChar]);
 
-    return (
-        <Container>
-            {visible.map((line, i) => (
-                    <Line key={i}>{line}</Line>
-                ))}
-        </Container>
-    );
+  return (
+    <div className='flex flex-col gap-1 font-mono'>
+      {displayed.map((line, i) => (
+        <span key={i} className='text-sm text-zinc-500'>
+          <span className='text-zinc-600 mr-2'>{'>'}</span>
+          {line}
+          {i === currentLine && (
+            <span className='animate-pulse ml-0.5 text-zinc-500'>▋</span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
 };
-
-
 
 export default TerminalPrint;

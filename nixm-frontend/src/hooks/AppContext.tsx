@@ -2,18 +2,13 @@ import { createContext, useContext, useState } from 'react';
 
 type Page = 'auth' | 'app' | 'landing';
 
-interface AppContextType {
-  page: Page;
-  setPage: (page: Page) => void;
-}
+interface AppContextType {}
 
 const AppContextProvider = createContext<AppContextType | null>(null);
 
 export const AppProvider = ({ children }: { children: React.ReactNode }) => {
-  const [page, setPage] = useState<Page>('landing');
-
   return (
-    <AppContextProvider.Provider value={{ page, setPage }}>
+    <AppContextProvider.Provider value={{}}>
       {children}
     </AppContextProvider.Provider>
   );
