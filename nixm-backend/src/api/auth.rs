@@ -2,7 +2,7 @@ use crate::db;
 use crate::state::AppState;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::{Json, Router, extract::State, routing::post, middleware};
+use axum::{Json, Router, extract::State, routing::post, middleware, Extension};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -222,27 +222,30 @@ async fn logout(State(state): State<AppState>,  jar: CookieJar) -> impl IntoResp
     ).into_response()
 }
 
-async fn me(State(state): State<AppState>) -> impl IntoResponse {
-    (StatusCode::OK)
-    // let user = match db::users::find_by_username(&state.db, &body.username).await {
-    //     Ok(user) => user,
-    //     Err(e) => {
-    //         eprintln!("DB Error finding user: {:?}", e);
-    //         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    //     }
-    // };
-    //
-    // let user = match user {
-    //     Some(u) => u,
-    //     None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
-    // };
-    //
-    // (StatusCode::OK, Json(json!({
-    //         "user": {
-    //             "id": user.id,
-    //             "username": user.username
-    //         }
-    //     }))).into_response()
+async fn me(State(state): State<AppState>,
+            Extension(user_id): Extension<String>,) -> impl IntoResponse {
+
+
+
+    let user = match db::users::find_by_id(&state.db, &user_id).await {
+        Ok(user) => user,
+        Err(e) => {
+            eprintln!("DB Error finding user: {:?}", e);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    let user = match user {
+        Some(u) => u,
+        None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
+    };
+
+    (StatusCode::OK, Json(json!({
+            "user": {
+                "id": user.id,
+                "username": user.username
+            }
+        }))).into_response()
 }
 
 

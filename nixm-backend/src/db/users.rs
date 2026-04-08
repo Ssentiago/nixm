@@ -21,6 +21,21 @@ pub async fn find_by_username(
     .await
 }
 
+pub async fn find_by_id(
+    pool: &PgPool,
+    id: &str,
+) -> Result<Option<User>, sqlx::Error> {
+    let id: i64 = id.parse().unwrap();
+    
+    sqlx::query_as::<_, User>(
+        "SELECT id, username, password_hash, created_at FROM users WHERE id = $1",
+    )
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+}
+
+
 pub async fn create_user(
     pool: &PgPool,
     username: &str,
