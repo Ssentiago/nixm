@@ -114,7 +114,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       method: 'POST',
       credentials: 'include',
     });
-    // опционально: POST /api/auth/logout чтобы отозвать refresh в БД
   };
 
   return (

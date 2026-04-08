@@ -167,7 +167,7 @@ async fn login(
 
     // 7. Формирование куки
     let cookie_str = format!(
-        "refresh_token={}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth/refresh; Max-Age=604800",
+        "refresh_token={}; HttpOnly; SameSite=Lax; Path=/api/auth/refresh; Max-Age=604800",
         token_pair.refresh_token
     );
 
@@ -252,37 +252,72 @@ pub async fn refresh_handler(
 ) -> Response {
     let refresh_token = match jar.get("refresh_token") {
         Some(c) => c.value().to_string(),
-        None => return StatusCode::UNAUTHORIZED.into_response(),
+        None => {
+            println!("[refresh] no cookie");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
     };
 
-    // Декодируем чтобы достать user_id и jti для проверки БД
+    println!("[refresh] token found, decoding...");
+
     let token_data = match decode::<RefreshClaims>(
         &refresh_token,
         &DecodingKey::from_secret(get_secret()),
         &Validation::default(),
     ) {
         Ok(data) => data,
-        Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(e) => {
+            println!("[refresh] decode failed: {e}");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
     };
 
     let user_id: i64 = match token_data.claims.sub.parse() {
         Ok(id) => id,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => {
+            println!("[refresh] user_id parse failed: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
     };
     let jti = &token_data.claims.jti;
+    println!("[refresh] user_id={user_id}, jti={jti}");
 
-    // Проверяем что токен не отозван
     match db::refresh_tokens::is_valid(&state.db, &user_id, jti).await {
-        Ok(true) => {},
-        Ok(false) => return StatusCode::UNAUTHORIZED.into_response(),
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Ok(true) => {
+            println!("[refresh] token valid in db");
+        },
+        Ok(false) => {
+            println!("[refresh] token NOT valid in db");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+        Err(e) => {
+            println!("[refresh] db error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
     }
 
-    // Выдаём новую пару
     match issue_tokens(&user_id.to_string()) {
         Ok(pair) => {
+            let new_claims = decode_refresh_token(&pair.refresh_token).unwrap();
+
+            let new_token = RefreshToken {
+                id: None,
+                token_jti: new_claims.jti,
+                expires_at: chrono::Utc.timestamp_opt(new_claims.exp as i64, 0).unwrap(),
+                user_id,
+                revoked: false,
+                issued_at: chrono::Utc::now(),
+                ip_address: None,
+                user_agent: None,
+            };
+
+            if let Err(e) = db::refresh_tokens::save(&state.db, &new_token).await {
+                println!("[refresh] save failed: {e}");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+
             let cookie = format!(
-                "refresh_token={}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth/refresh; Max-Age=604800",
+                "refresh_token={}; HttpOnly; SameSite=Lax; Path=/api/auth/refresh; Max-Age=604800",
                 pair.refresh_token
             );
             (
@@ -294,17 +329,23 @@ pub async fn refresh_handler(
                 })),
             ).into_response()
         }
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => {
+            println!("[refresh] issue_tokens failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
-}
-pub fn router() -> Router<AppState> {
-    Router::new()
+}pub fn router() -> Router<AppState> {
+    let protected = Router::new()
         .route("/me", post(me))
+        .layer(middleware::from_fn(auth_middleware));
 
-        .layer(middleware::from_fn(auth_middleware))
-
+    let public = Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/logout", post(logout))
-        .route("/refresh", post(refresh_handler))
+        .route("/refresh", post(refresh_handler));
+
+    Router::new()
+        .merge(protected)
+        .merge(public)
 }

@@ -43,7 +43,6 @@ const Login = () => {
 
       const { access_token } = await response.json();
       login(access_token);
-      navigate('/dashboard', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
