@@ -3,9 +3,11 @@ pub mod db;
 pub mod models;
 pub mod state;
 pub mod tokens;
+pub mod middleware;
 
 use std::env;
 use std::env::VarError;
+use std::net::SocketAddr;
 use tower_http::services::ServeDir;
 
 use crate::api::{auth};
@@ -55,5 +57,7 @@ async fn main() {
 
     println!("listening to {backend_port}...");
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", backend_port) ).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .await
+        .unwrap();
 }

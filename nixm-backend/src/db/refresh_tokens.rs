@@ -6,9 +6,8 @@ pub async fn save(
     token: &RefreshToken,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
-        r#"INSERT INTO refresh_tokens (id, user_id, token_jti, issued_at, expires_at, revoked, ip_address, user_agent)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
-        token.id,
+        r#"INSERT INTO refresh_tokens (user_id, token_jti, issued_at, expires_at, revoked, ip_address, user_agent)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
         token.user_id,
         token.token_jti,
         token.issued_at,
@@ -24,7 +23,7 @@ pub async fn save(
 
 pub async fn is_valid(
     pool: &PgPool,
-    user_id: &i32,
+    user_id: &i64,
     jti: &str,
 ) -> Result<bool, sqlx::Error> {
     let exists = sqlx::query_scalar!(
@@ -41,4 +40,21 @@ pub async fn is_valid(
         .unwrap_or(false);
 
     Ok(exists)
+}
+
+pub async fn revoke(
+    pool: &PgPool,
+    user_id: i64,
+    jti: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"UPDATE refresh_tokens
+           SET revoked = TRUE
+           WHERE user_id = $1 AND token_jti = $2"#,
+        user_id,
+        jti
+    )
+        .execute(pool)
+        .await?;
+    Ok(())
 }

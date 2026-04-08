@@ -95,3 +95,21 @@ pub fn refresh_access_token(refresh_token: &str) -> Result<TokenPair, jsonwebtok
         Err(e) => Err(e),
     }
 }
+
+pub fn decode_access_token(token: &str) -> Result<AccessClaims, jsonwebtoken::errors::Error> {
+    let token_data = decode::<AccessClaims>(
+        token,
+        &DecodingKey::from_secret(get_secret()),
+        &Validation::default(),
+    )?;
+    Ok(token_data.claims)
+}
+
+pub fn decode_refresh_token(token: &str) -> Result<RefreshClaims, jsonwebtoken::errors::Error> {
+    let token_data = decode::<RefreshClaims>(
+        token,
+        &DecodingKey::from_secret(get_secret()),
+        &Validation::default(),
+    )?;
+    Ok(token_data.claims)
+}

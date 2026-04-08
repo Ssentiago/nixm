@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS refresh_tokens (
-                                id TEXT PRIMARY KEY,
-                                user_id INTEGER NOT NULL,
+                                id BIGSERIAL PRIMARY KEY,
+                                user_id BIGINT NOT NULL,
                                 token_jti TEXT NOT NULL UNIQUE,
                                 issued_at TIMESTAMP WITH TIME ZONE,
                                 expires_at TIMESTAMP WITH TIME ZONE NOT NULL,

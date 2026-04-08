@@ -14,7 +14,7 @@ pub async fn find_by_username(
     username: &str,
 ) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, created_at FROM users WHERE username = ?",
+        "SELECT id, username, password_hash, created_at FROM users WHERE username = $1",
     )
     .bind(username)
     .fetch_optional(pool)

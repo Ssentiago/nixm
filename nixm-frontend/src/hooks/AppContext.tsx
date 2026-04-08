@@ -1,7 +1,5 @@
 import { createContext, useContext, useState } from 'react';
 
-type Page = 'auth' | 'app' | 'landing';
-
 interface AppContextType {}
 
 const AppContextProvider = createContext<AppContextType | null>(null);
