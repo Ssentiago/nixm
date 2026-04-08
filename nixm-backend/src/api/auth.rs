@@ -167,7 +167,7 @@ async fn login(
 
     // 7. Формирование куки
     let cookie_str = format!(
-        "refresh_token={}; HttpOnly; Secure; SameSite=Strict; Path=/api/auth/refresh; Max-Age=604800",
+        "refresh_token={}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth/refresh; Max-Age=604800",
         token_pair.refresh_token
     );
 

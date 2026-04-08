@@ -19,6 +19,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   interceptor: (path: string, option: any) => Promise<Response>;
+  user: User | null;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -125,6 +126,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!token,
         isLoading,
         interceptor: apiInterceptor,
+        user,
       }}
     >
       {children}

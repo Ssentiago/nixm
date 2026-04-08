@@ -5,15 +5,18 @@ pub mod state;
 pub mod tokens;
 pub mod middleware;
 
+use std::collections::HashMap;
 use std::env;
 use std::env::VarError;
 use std::net::SocketAddr;
-use tower_http::services::ServeDir;
+use std::sync::Arc;
+use tower_http::services::{ServeDir, ServeFile};
 
-use crate::api::{auth};
+use crate::api::{auth, ws};
 use crate::state::AppState;
 use axum::{Router, routing::get};
 use sqlx::PgPool;
+use tokio::sync::RwLock;
 use tracing_subscriber;
 
 #[tokio::main]
@@ -45,13 +48,20 @@ async fn main() {
 
     let pool = PgPool::connect(&db_url).await.unwrap();
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    let state = AppState { db: pool };
+    let state = AppState {
+        db: pool,
+        connections: Arc::new(RwLock::new(HashMap::new())),
+    };
 
     let backend_port = std::env::var("BACKEND_PORT").unwrap_or("3000".to_string());
 
     let app: Router = Router::new()
         .nest("/api/auth", auth::router())
-        .fallback_service(ServeDir::new(&static_dir))
+        .route("/ws", get(ws::ws_handler))
+        .fallback_service(
+        ServeDir::new(&static_dir)
+            .fallback(ServeFile::new(format!("{}/index.html", static_dir)))
+    )
         .with_state(state)
         .layer(tower_http::trace::TraceLayer::new_for_http());
 

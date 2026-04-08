@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { useAuth } from '@/hooks/AuthContext';
 
 // ── Mock data ──────────────────────────────────────────────────────────────────
 
@@ -414,6 +416,9 @@ const ChatsOverlay = ({
 const Dashboard = () => {
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  const [wsInput, setWsInput] = useState('');
+  const { token } = useAuth();
+  const { messages, send, connected } = useWebSocket(token);
 
   const activeChat = MOCK_CHATS.find(c => c.id === activeChatId) ?? null;
 
@@ -436,6 +441,55 @@ const Dashboard = () => {
       ) : (
         <EmptyState />
       )}
+
+      <div className='fixed bottom-4 right-4 w-72 bg-muted border border-border rounded-md p-3 space-y-2 z-50'>
+        <div className='flex items-center justify-between'>
+          <span className='text-[10px] font-mono text-muted-foreground uppercase tracking-widest'>
+            ws debug
+          </span>
+          <span
+            className={`text-[10px] font-mono ${connected ? 'text-emerald-500' : 'text-muted-foreground/40'}`}
+          >
+            {connected ? 'connected' : 'disconnected'}
+          </span>
+        </div>
+        <div className='h-32 overflow-y-auto space-y-1'>
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className={`text-[11px] font-mono ${msg.fromMe ? 'text-foreground text-right' : 'text-muted-foreground'}`}
+            >
+              <span className='text-muted-foreground/40 mr-1'>{msg.time}</span>
+              {msg.fromMe ? '→' : '←'} {msg.text}
+            </div>
+          ))}
+        </div>
+        <div className='flex gap-2'>
+          <input
+            value={wsInput}
+            onChange={e => setWsInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && wsInput.trim()) {
+                send(wsInput.trim());
+                setWsInput('');
+              }
+            }}
+            placeholder='send message...'
+            className='flex-1 bg-background border border-border rounded px-2 py-1 text-xs font-mono outline-none placeholder:text-muted-foreground/30'
+          />
+          <button
+            onClick={() => {
+              if (wsInput.trim()) {
+                send(wsInput.trim());
+                setWsInput('');
+              }
+            }}
+            className='text-xs font-mono px-2 py-1 border border-border rounded hover:bg-secondary transition-colors'
+          >
+            →
+          </button>
+        </div>
+      </div>
 
       {overlayOpen && (
         <ChatsOverlay
