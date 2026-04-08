@@ -8,6 +8,7 @@ import { AuthProvider } from '@/hooks/AuthContext';
 import Register from '@/pages/Register';
 import ProtectedRoute from '@/components/routing/ProtectedRoute';
 import PublicRoute from '@/components/routing/PublicRoute';
+import Dashboard from '@/pages/Dashboard/Dashboard';
 const App = () => {
   return (
     <AppProvider>
@@ -43,11 +44,11 @@ const App = () => {
                 path='/dashboard'
                 element={
                   <ProtectedRoute>
-                    <></>
+                    <Dashboard></Dashboard>
                   </ProtectedRoute>
                 }
               />
-            </Routes>{' '}
+            </Routes>
           </BrowserRouter>
         </AppContainer>
       </AuthProvider>

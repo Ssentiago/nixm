@@ -223,25 +223,26 @@ async fn logout(State(state): State<AppState>,  jar: CookieJar) -> impl IntoResp
 }
 
 async fn me(State(state): State<AppState>) -> impl IntoResponse {
-    let user = match db::users::find_by_username(&state.db, &body.username).await {
-        Ok(user) => user,
-        Err(e) => {
-            eprintln!("DB Error finding user: {:?}", e);
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    };
-
-    let user = match user {
-        Some(u) => u,
-        None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
-    };
-
-    (StatusCode::OK, Json(json!({
-            "user": {
-                "id": user.id,
-                "username": user.username
-            }
-        }))).into_response()
+    (StatusCode::OK)
+    // let user = match db::users::find_by_username(&state.db, &body.username).await {
+    //     Ok(user) => user,
+    //     Err(e) => {
+    //         eprintln!("DB Error finding user: {:?}", e);
+    //         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    //     }
+    // };
+    //
+    // let user = match user {
+    //     Some(u) => u,
+    //     None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
+    // };
+    //
+    // (StatusCode::OK, Json(json!({
+    //         "user": {
+    //             "id": user.id,
+    //             "username": user.username
+    //         }
+    //     }))).into_response()
 }
 
 
@@ -298,11 +299,12 @@ pub async fn refresh_handler(
 }
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/me", post(me))
+
+        .layer(middleware::from_fn(auth_middleware))
+
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/refresh", post(refresh_handler))
-        .route("/me", post(me))
-        
-        .layer(middleware::from_fn(auth_middleware))
 }

@@ -1,4 +1,6 @@
 // hooks/useWebSocket.ts
+import { useEffect, useRef } from 'react';
+
 const useWebSocket = (token: string | null) => {
   const ws = useRef<WebSocket | null>(null);
 
