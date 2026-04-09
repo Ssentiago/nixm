@@ -18,7 +18,7 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
-  interceptor: (path: string, option: any) => Promise<Response>;
+  interceptor: (path: string, option?: RequestInit) => Promise<Response>;
   user: User | null;
 }
 
@@ -54,12 +54,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const apiInterceptor = async (path: string, option: any) => {
+  const apiInterceptor = async (path: string, option?: RequestInit) => {
     let response;
+    const opts = option ?? {};
 
     response = await fetch(path, {
-      ...option,
-      headers: { ...option.headers, Authorization: `Bearer ${token}` },
+      ...opts,
+      headers: {
+        ...(opts.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
     });
 
     if (response.status !== 401) {
@@ -77,16 +81,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     response = await fetch(path, {
-      ...option,
-      headers: { ...option.headers, Authorization: `Bearer ${access}` },
+      ...opts,
+      headers: {
+        ...(opts.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
     });
 
     return response;
   };
 
   useEffect(() => {
+    console.log('got token: ', token);
     if (token) {
-      const resp = apiInterceptor('/api/user/me', {
+      const resp = apiInterceptor('/api/auth/me', {
         method: 'GET',
       })
         .then(async resp => {
@@ -94,7 +102,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const user: User = data.user;
           setUser(user);
         })
-        .catch(() => setUser(null));
+        .catch(e => {
+          setUser(null);
+        });
     } else {
       setUser(null);
     }

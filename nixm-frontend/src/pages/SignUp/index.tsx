@@ -1,37 +1,45 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // 1. Добавили useEffect
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/AuthContext';
 
-const Login = () => {
-  const { login } = useAuth();
+const SIgnUp = () => {
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [isRegistered, setIsRegistered] = useState(false);
+
+  useEffect(() => {
+    if (isRegistered) {
+      setSuccess('Registration successful! Redirecting...');
+      const timer = setTimeout(() => navigate('/', { replace: true }), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isRegistered, navigate]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify(data),
       });
 
       if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Invalid username of password');
+        if (response.status === 409) {
+          throw new Error('Username taken');
         } else if (response.status === 500) {
           throw new Error('Internal server error. Try again later');
         } else {
@@ -39,10 +47,7 @@ const Login = () => {
         }
       }
 
-      console.log('Logged successfully');
-
-      const { access_token } = await response.json();
-      login(access_token);
+      setIsRegistered(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -53,7 +58,7 @@ const Login = () => {
   return (
     <div className='flex flex-col min-h-screen'>
       <header className='w-full border-b border-border/50 text-center py-4'>
-        <h1 className='text-2xl font-bold tracking-tighter'>Sign in to Nixm</h1>
+        <h1 className='text-2xl font-bold tracking-tighter'>Sign Up to Nixm</h1>
       </header>
 
       <main className='flex-1 flex flex-col items-center justify-center p-4'>
@@ -64,6 +69,12 @@ const Login = () => {
             </div>
           )}
 
+          {success && (
+            <div className='p-3 text-sm text-green-600 bg-green-50 border border-green-200 rounded-md'>
+              {success}
+            </div>
+          )}
+
           <div className='space-y-2'>
             <Label htmlFor='username'>Username</Label>
             <Input
@@ -71,7 +82,7 @@ const Login = () => {
               name='username'
               placeholder='enter username'
               required
-              disabled={isLoading}
+              disabled={isLoading || !!success}
             />
           </div>
 
@@ -83,12 +94,27 @@ const Login = () => {
               type='password'
               placeholder='enter password'
               required
-              disabled={isLoading}
+              disabled={isLoading || !!success}
             />
           </div>
 
-          <Button type='submit' className='w-full' disabled={isLoading}>
-            {isLoading ? 'Logging...' : 'Sign In'}
+          <div className='space-y-2'>
+            <Label htmlFor='password-retype'>Password again</Label>
+            <Input
+              id='password-again'
+              type='password'
+              placeholder='enter password'
+              required
+              disabled={isLoading || !!success}
+            />
+          </div>
+
+          <Button
+            type='submit'
+            className='w-full'
+            disabled={isLoading || !!success}
+          >
+            {isLoading ? 'Registering...' : 'Sign Up'}
           </Button>
         </form>
       </main>
@@ -96,4 +122,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default SIgnUp;

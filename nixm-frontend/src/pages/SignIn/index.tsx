@@ -1,45 +1,39 @@
-import { useState, useEffect } from 'react'; // 1. Добавили useEffect
+import { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/AuthContext';
+import { generateAndSaveKeys, getPublicData, hasKeys } from '@/lib/crypto';
 
-const Register = () => {
+const SignIn = () => {
+  const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const [isRegistered, setIsRegistered] = useState(false);
-
-  useEffect(() => {
-    if (isRegistered) {
-      setSuccess('Registration successful! Redirecting...');
-      const timer = setTimeout(() => navigate('/', { replace: true }), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [isRegistered, navigate]);
+  const { interceptor } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
 
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(data),
       });
 
       if (!response.ok) {
-        if (response.status === 409) {
-          throw new Error('Username taken');
+        if (response.status === 401) {
+          throw new Error('Invalid username of password');
         } else if (response.status === 500) {
           throw new Error('Internal server error. Try again later');
         } else {
@@ -47,7 +41,10 @@ const Register = () => {
         }
       }
 
-      setIsRegistered(true);
+      console.log('Logged successfully');
+
+      const { access_token } = await response.json();
+      login(access_token);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -58,7 +55,7 @@ const Register = () => {
   return (
     <div className='flex flex-col min-h-screen'>
       <header className='w-full border-b border-border/50 text-center py-4'>
-        <h1 className='text-2xl font-bold tracking-tighter'>Sign Up to Nixm</h1>
+        <h1 className='text-2xl font-bold tracking-tighter'>Sign in to Nixm</h1>
       </header>
 
       <main className='flex-1 flex flex-col items-center justify-center p-4'>
@@ -69,12 +66,6 @@ const Register = () => {
             </div>
           )}
 
-          {success && (
-            <div className='p-3 text-sm text-green-600 bg-green-50 border border-green-200 rounded-md'>
-              {success}
-            </div>
-          )}
-
           <div className='space-y-2'>
             <Label htmlFor='username'>Username</Label>
             <Input
@@ -82,7 +73,7 @@ const Register = () => {
               name='username'
               placeholder='enter username'
               required
-              disabled={isLoading || !!success}
+              disabled={isLoading}
             />
           </div>
 
@@ -94,16 +85,12 @@ const Register = () => {
               type='password'
               placeholder='enter password'
               required
-              disabled={isLoading || !!success}
+              disabled={isLoading}
             />
           </div>
 
-          <Button
-            type='submit'
-            className='w-full'
-            disabled={isLoading || !!success}
-          >
-            {isLoading ? 'Registering...' : 'Sign Up'}
+          <Button type='submit' className='w-full' disabled={isLoading}>
+            {isLoading ? 'Logging...' : 'Sign In'}
           </Button>
         </form>
       </main>
@@ -111,4 +98,4 @@ const Register = () => {
   );
 };
 
-export default Register;
+export default SignIn;

@@ -1,15 +1,13 @@
+use crate::tokens::decode_access_token;
+use axum::response::IntoResponse;
 use axum::{
     extract::Request,
-    http::{header::AUTHORIZATION, StatusCode},
+    http::{StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::Response,
-};
-use crate::tokens::decode_access_token; // Твой хелпер
+}; // Твой хелпер
 
-pub async fn auth_middleware(
-    mut req: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, StatusCode> {
     // 1. Достаем заголовок Authorization
     let auth_header = req
         .headers()
@@ -24,6 +22,10 @@ pub async fn auth_middleware(
 
     // 3. Декодируем и валидируем токен
     let claims = decode_access_token(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    if claims.exp >= chrono::Utc::now().timestamp() as usize {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     // 4. (Опционально) Кладем user_id в extensions запроса,
     // чтобы использовать в хендлерах

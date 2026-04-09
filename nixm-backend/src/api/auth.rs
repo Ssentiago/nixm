@@ -1,25 +1,26 @@
 use crate::db;
 use crate::state::AppState;
+use crate::tokens::{RefreshClaims, decode_refresh_token};
 use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
-use axum::{Json, Router, extract::State, routing::post, middleware, Extension};
+use axum::{Extension, Json, Router, extract::State, middleware, routing::post};
+use axum_extra::extract::CookieJar;
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use axum::http::{header, HeaderValue};
-use axum_extra::extract::CookieJar;
-use crate::tokens::{decode_refresh_token, RefreshClaims};
-use jsonwebtoken::{decode, DecodingKey, Validation};
 
-use once_cell::sync::OnceCell;
-use std::env;
-use std::net::SocketAddr;
-use axum::extract::ConnectInfo;
-use axum::http::header::USER_AGENT;
-use chrono::TimeZone;
 use crate::middleware::auth::auth_middleware;
 use crate::models::refresh_token::RefreshToken;
 use crate::tokens::{issue_tokens, refresh_access_token};
+use axum::extract::ConnectInfo;
+use axum::http::header::USER_AGENT;
+use axum::routing::get;
+use chrono::TimeZone;
+use once_cell::sync::OnceCell;
+use std::env;
+use std::net::SocketAddr;
 
 static SECRET: OnceCell<Vec<u8>> = OnceCell::new();
 
@@ -37,9 +38,7 @@ struct RegistrationRequest {
     password: String,
 }
 
-
-
-async fn register(
+async fn sign_up(
     State(state): State<AppState>,
     Json(body): Json<RegistrationRequest>,
 ) -> impl IntoResponse {
@@ -81,18 +80,16 @@ async fn register(
 }
 
 #[derive(Deserialize)]
-struct LoginRequest {
+struct SignInRequest {
     username: String,
     password: String,
 }
 
-
-
-async fn login(
+async fn sign_in(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(body): Json<LoginRequest>,
+    Json(body): Json<SignInRequest>,
 ) -> impl IntoResponse {
     // 1. Поиск пользователя
     let user = match db::users::find_by_username(&state.db, &body.username).await {
@@ -151,7 +148,9 @@ async fn login(
     let refresh_token_obj = RefreshToken {
         id: None,
         token_jti: refresh_claim.jti,
-        expires_at: chrono::Utc.timestamp_opt(refresh_claim.exp as i64, 0).unwrap(),
+        expires_at: chrono::Utc
+            .timestamp_opt(refresh_claim.exp as i64, 0)
+            .unwrap(),
         user_id: user.id,
         revoked: false,
         issued_at: chrono::Utc::now(),
@@ -189,11 +188,12 @@ async fn login(
                 "id": user.id,
                 "username": user.username
             }
-        }))
-    ).into_response()
+        })),
+    )
+        .into_response()
 }
 
-async fn logout(State(state): State<AppState>,  jar: CookieJar) -> impl IntoResponse {
+async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoResponse {
     let refresh_token = match jar.get("refresh_token") {
         Some(c) => c.value().to_string(),
         None => return StatusCode::OK.into_response(), // Куки нет — считаем успешным выходом
@@ -210,7 +210,6 @@ async fn logout(State(state): State<AppState>,  jar: CookieJar) -> impl IntoResp
         };
         let jti = &token_data.claims.jti;
 
-
         let _ = db::refresh_tokens::revoke(&state.db, user_id, jti).await;
     }
 
@@ -219,14 +218,15 @@ async fn logout(State(state): State<AppState>,  jar: CookieJar) -> impl IntoResp
     (
         StatusCode::OK,
         [(header::SET_COOKIE, HeaderValue::from_str(cookie).unwrap())],
-    ).into_response()
+    )
+        .into_response()
 }
 
-async fn me(State(state): State<AppState>,
-            Extension(user_id): Extension<String>,) -> impl IntoResponse {
-
-
-
+async fn me(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<String>,
+) -> impl IntoResponse {
+    println!("called me");
     let user = match db::users::find_by_id(&state.db, &user_id).await {
         Ok(user) => user,
         Err(e) => {
@@ -240,19 +240,19 @@ async fn me(State(state): State<AppState>,
         None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
     };
 
-    (StatusCode::OK, Json(json!({
+    (
+        StatusCode::OK,
+        Json(json!({
             "user": {
                 "id": user.id,
                 "username": user.username
             }
-        }))).into_response()
+        })),
+    )
+        .into_response()
 }
 
-
-pub async fn refresh_handler(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Response {
+pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> Response {
     let refresh_token = match jar.get("refresh_token") {
         Some(c) => c.value().to_string(),
         None => {
@@ -288,7 +288,7 @@ pub async fn refresh_handler(
     match db::refresh_tokens::is_valid(&state.db, &user_id, jti).await {
         Ok(true) => {
             println!("[refresh] token valid in db");
-        },
+        }
         Ok(false) => {
             println!("[refresh] token NOT valid in db");
             return StatusCode::UNAUTHORIZED.into_response();
@@ -330,25 +330,26 @@ pub async fn refresh_handler(
                     "access_token": pair.access_token,
                     "expires_in": pair.expires_in
                 })),
-            ).into_response()
+            )
+                .into_response()
         }
         Err(e) => {
             println!("[refresh] issue_tokens failed: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
-}pub fn router() -> Router<AppState> {
+}
+
+pub fn router() -> Router<AppState> {
     let protected = Router::new()
-        .route("/me", post(me))
+        .route("/me", get(me))
         .layer(middleware::from_fn(auth_middleware));
 
     let public = Router::new()
-        .route("/register", post(register))
-        .route("/login", post(login))
+        .route("/register", post(sign_up))
+        .route("/login", post(sign_in))
         .route("/logout", post(logout))
         .route("/refresh", post(refresh_handler));
 
-    Router::new()
-        .merge(protected)
-        .merge(public)
+    Router::new().merge(protected).merge(public)
 }

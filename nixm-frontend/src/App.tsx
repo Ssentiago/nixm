@@ -3,12 +3,13 @@ import { AppProvider, useAppContext } from '@/hooks/AppContext';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Landing from '@/pages/Landing';
 import AppContainer from './components/AppContainer';
-import Login from '@/pages/Login';
+import SignIn from '@/pages/SignIn';
 import { AuthProvider } from '@/hooks/AuthContext';
-import Register from '@/pages/Register';
+import SIgnUp from '@/pages/SignUp';
 import ProtectedRoute from '@/components/routing/ProtectedRoute';
 import PublicRoute from '@/components/routing/PublicRoute';
 import Dashboard from '@/pages/Dashboard/Dashboard';
+import KeysGuard from '@/components/routing/KeyGuard';
 const App = () => {
   return (
     <AppProvider>
@@ -28,7 +29,7 @@ const App = () => {
                 path='/login'
                 element={
                   <PublicRoute>
-                    <Login />
+                    <SignIn />
                   </PublicRoute>
                 }
               />
@@ -36,7 +37,7 @@ const App = () => {
                 path='/register'
                 element={
                   <PublicRoute>
-                    <Register />
+                    <SIgnUp />
                   </PublicRoute>
                 }
               />
@@ -44,7 +45,9 @@ const App = () => {
                 path='/dashboard'
                 element={
                   <ProtectedRoute>
-                    <Dashboard></Dashboard>
+                    <KeysGuard>
+                      <Dashboard />
+                    </KeysGuard>
                   </ProtectedRoute>
                 }
               />

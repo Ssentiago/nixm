@@ -1,25 +1,22 @@
-use serde::{Deserialize, Serialize};
-use chrono::{Utc, Duration};
-use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 use std::env;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccessClaims {
-    pub sub: String,      // ID пользователя
-    pub exp: usize,       // Время истечения
-    pub typ: String,      // Тип токена
+    pub sub: String, // ID пользователя
+    pub exp: usize,  // Время истечения
+    pub typ: String, // Тип токена
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RefreshClaims {
-    pub sub: String,      // ID пользователя
-    pub exp: usize,       // Время истечения
-    pub jti: String,      // Уникальный ID токена (для отзыва)
+    pub sub: String, // ID пользователя
+    pub exp: usize,  // Время истечения
+    pub jti: String, // Уникальный ID токена (для отзыва)
 }
-
-
-
 
 static SECRET: OnceCell<Vec<u8>> = OnceCell::new();
 
@@ -35,7 +32,7 @@ fn get_secret() -> &'static [u8] {
 pub fn generate_access_token(user_id: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let claims = AccessClaims {
         sub: user_id.to_string(),
-        exp: (Utc::now() + Duration::minutes(15)).timestamp() as usize,
+        exp: (Utc::now() + Duration::minutes(5)).timestamp() as usize,
         typ: "access".to_string(),
     };
 
@@ -60,7 +57,6 @@ pub fn generate_refresh_token(user_id: &str) -> Result<String, jsonwebtoken::err
         &EncodingKey::from_secret(get_secret()),
     )
 }
-
 
 #[derive(Debug, Serialize)]
 pub struct TokenPair {
