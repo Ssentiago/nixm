@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   ReactNode,
+  useRef,
 } from 'react';
 import * as wasi from 'node:wasi';
 
@@ -28,8 +29,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<null | User>(null);
+  const tokenRef = useRef<string | null>(null);
 
   let refreshPromise: Promise<string | null> | null = null;
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
   const updateAccessToken = async () => {
     try {
       setIsLoading(true);
@@ -44,6 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       const data = await resp.json();
 
+      tokenRef.current = data.access_token; // сразу обновляем ref
       setToken(data.access_token);
       return data.access_token;
     } catch (e) {
@@ -62,7 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       ...opts,
       headers: {
         ...(opts.headers ?? {}),
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${tokenRef.current}`,
       },
     });
 
@@ -84,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       ...opts,
       headers: {
         ...(opts.headers ?? {}),
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${access}`,
       },
     });
 

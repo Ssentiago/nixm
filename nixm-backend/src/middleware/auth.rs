@@ -23,7 +23,7 @@ pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, S
     // 3. Декодируем и валидируем токен
     let claims = decode_access_token(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    if claims.exp >= chrono::Utc::now().timestamp() as usize {
+    if claims.exp < chrono::Utc::now().timestamp() as usize {
         return Err(StatusCode::UNAUTHORIZED);
     }
 

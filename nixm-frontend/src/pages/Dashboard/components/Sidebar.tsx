@@ -5,6 +5,8 @@ import { ChatItem } from '@/pages/Dashboard/components/ChatItem';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { OnlineDot } from '@/pages/Dashboard/components/OnlineDot';
 import { useAuth } from '@/hooks/AuthContext';
+import { FaGear } from 'react-icons/fa6';
+import { Settings } from './Settings';
 
 export const Sidebar = ({
   chats,
@@ -21,6 +23,7 @@ export const Sidebar = ({
     : chats;
 
   const { user } = useAuth();
+  const [openSettings, setOpenSettings] = useState(false);
 
   return (
     <aside className='w-64 shrink-0 flex flex-col border-r border-border h-full'>
@@ -35,6 +38,7 @@ export const Sidebar = ({
         </div>
         <SearchBar value={query} onChange={setQuery} />
       </div>
+
       <div className='flex-1 overflow-y-auto p-2 space-y-0.5'>
         {filtered.length > 0 ? (
           filtered.map(chat => (
@@ -51,6 +55,7 @@ export const Sidebar = ({
           </p>
         )}
       </div>
+
       <div className='p-3 border-t border-border'>
         <div className='flex items-center gap-2'>
           <div className='relative'>
@@ -64,8 +69,17 @@ export const Sidebar = ({
           <span className='text-xs font-mono text-muted-foreground'>
             {user ? user.username : 'unknown'}
           </span>
+          <button
+            onClick={() => setOpenSettings(true)}
+            className='ml-auto p-1 hover:bg-muted rounded-md transition-colors'
+            title='Open settings'
+          >
+            <FaGear size={16} />
+          </button>
         </div>
       </div>
+
+      <Settings open={openSettings} onClose={() => setOpenSettings(false)} />
     </aside>
   );
 };

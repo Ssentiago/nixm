@@ -21,6 +21,7 @@ const KeysGuard = ({ children }: { children: React.ReactNode }) => {
       if (!publicData) {
         setError('Failed to get encryption keys.');
         setStatus('error');
+        return;
       }
       const resp = await interceptor('/api/keys/upload', {
         method: 'POST',
