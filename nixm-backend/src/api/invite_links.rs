@@ -50,7 +50,7 @@ async fn create_invite(
             .into_response();
     }
 
-    match db::invite_links::create(&state.db, user_id, &req.invite_type, req.expires_in).await {
+    match db::invite_links::create(&state.pool, user_id, &req.invite_type, req.expires_in).await {
         Ok(invite) => (StatusCode::CREATED, Json(json!(invite))).into_response(),
         Err(e) => {
             eprintln!("Failed to create invite link for user {}: {:?}", user_id, e);
@@ -68,7 +68,7 @@ async fn get_user_invites(
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid user id").into_response(),
     };
 
-    match db::invite_links::get_all_for_user(&state.db, user_id).await {
+    match db::invite_links::get_all_for_user(&state.pool, user_id).await {
         Ok(invites) => (StatusCode::OK, Json(json!(invites))).into_response(),
         Err(e) => {
             eprintln!("Failed to get invites for user {}: {:?}", user_id, e);
@@ -87,7 +87,7 @@ async fn revoke_invite(
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid user id").into_response(),
     };
 
-    match db::invite_links::revoke(&state.db, user_id, id).await {
+    match db::invite_links::revoke(&state.pool, user_id, id).await {
         Ok(true) => (StatusCode::OK, "Revoked").into_response(),
         Ok(false) => (
             StatusCode::NOT_FOUND,
@@ -111,7 +111,7 @@ async fn delete_invite(
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid user id").into_response(),
     };
 
-    match db::invite_links::delete(&state.db, user_id, id).await {
+    match db::invite_links::delete(&state.pool, user_id, id).await {
         Ok(true) => (StatusCode::OK, "Deleted").into_response(),
         Ok(false) => (
             StatusCode::NOT_FOUND,

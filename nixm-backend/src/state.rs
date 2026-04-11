@@ -1,14 +1,13 @@
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
-use sqlx::PgPool;
 
-// Каждый юзер = канал для отправки сообщений в его WS
 type UserId = i64;
-type WsSender = mpsc::UnboundedSender<String>;
+pub type WsSender = mpsc::UnboundedSender<Vec<u8>>;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: PgPool,
-    pub connections: Arc<RwLock<HashMap<UserId, WsSender>>>,
+    pub pool: PgPool,
+    pub connections: Arc<RwLock<HashMap<i64, WsSender>>>,
 }

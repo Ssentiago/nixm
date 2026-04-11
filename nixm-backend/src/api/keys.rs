@@ -43,7 +43,8 @@ async fn upload(
         return StatusCode::BAD_REQUEST.into_response();
     }
 
-    if let Err(e) = db::keys::upload_public_key(&state.db, user_id, &device_id, &public_key).await {
+    if let Err(e) = db::keys::upload_public_key(&state.pool, user_id, &device_id, &public_key).await
+    {
         eprintln!("DB Error uploading key for user: {:?}", e);
         return (StatusCode::INTERNAL_SERVER_ERROR).into_response();
     }
@@ -52,7 +53,7 @@ async fn upload(
 }
 
 async fn keys(State(state): State<AppState>, Path(user_id): Path<i64>) -> impl IntoResponse {
-    return match db::keys::get_public_keys_for_user(&state.db, user_id).await {
+    return match db::keys::get_public_keys_for_user(&state.pool, user_id).await {
         Ok(keys) => (StatusCode::OK, Json(json!(keys))).into_response(),
         Err(e) => {
             eprintln!("Error when getting public keys for user: {:?}", e);

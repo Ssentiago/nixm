@@ -46,7 +46,7 @@ async fn sign_up(
     let password = body.password;
 
     // 1. Проверка существования
-    let existing_user = match db::users::find_by_username(&state.db, &username).await {
+    let existing_user = match db::users::find_by_username(&state.pool, &username).await {
         Ok(user) => user,
         Err(e) => {
             eprintln!("DB Error (find): {:?}", e);
@@ -68,7 +68,7 @@ async fn sign_up(
     };
 
     // 3. Создание пользователя
-    match db::users::create_user(&state.db, &username, &hash).await {
+    match db::users::create_user(&state.pool, &username, &hash).await {
         Ok(_) => (),
         Err(e) => {
             eprintln!("DB Error (create): {:?}", e); // <-- Вот тут ты увидишь реальную ошибку
@@ -92,7 +92,7 @@ async fn sign_in(
     Json(body): Json<SignInRequest>,
 ) -> impl IntoResponse {
     // 1. Поиск пользователя
-    let user = match db::users::find_by_username(&state.db, &body.username).await {
+    let user = match db::users::find_by_username(&state.pool, &body.username).await {
         Ok(user) => user,
         Err(e) => {
             eprintln!("DB Error finding user: {:?}", e);
@@ -159,7 +159,7 @@ async fn sign_in(
     };
 
     // 6. Сохранение в БД
-    if let Err(e) = db::refresh_tokens::save(&state.db, &refresh_token_obj).await {
+    if let Err(e) = db::refresh_tokens::save(&state.pool, &refresh_token_obj).await {
         eprintln!("Save refresh token error: {:?}", e);
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
@@ -210,7 +210,7 @@ async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoRespo
         };
         let jti = &token_data.claims.jti;
 
-        let _ = db::refresh_tokens::revoke(&state.db, user_id, jti).await;
+        let _ = db::refresh_tokens::revoke(&state.pool, user_id, jti).await;
     }
 
     let cookie = "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/api/auth/refresh; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
@@ -227,7 +227,7 @@ async fn me(
     Extension(user_id): Extension<String>,
 ) -> impl IntoResponse {
     println!("called me");
-    let user = match db::users::find_by_id(&state.db, &user_id).await {
+    let user = match db::users::find_by_id(&state.pool, &user_id).await {
         Ok(user) => user,
         Err(e) => {
             eprintln!("DB Error finding user: {:?}", e);
@@ -285,7 +285,7 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
     let jti = &token_data.claims.jti;
     println!("[refresh] user_id={user_id}, jti={jti}");
 
-    match db::refresh_tokens::is_valid(&state.db, &user_id, jti).await {
+    match db::refresh_tokens::is_valid(&state.pool, &user_id, jti).await {
         Ok(true) => {
             println!("[refresh] token valid in db");
         }
@@ -314,7 +314,7 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
                 user_agent: None,
             };
 
-            if let Err(e) = db::refresh_tokens::save(&state.db, &new_token).await {
+            if let Err(e) = db::refresh_tokens::save(&state.pool, &new_token).await {
                 println!("[refresh] save failed: {e}");
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
