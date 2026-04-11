@@ -5,6 +5,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::Duration;
+use rmp_serde;
 use tokio::sync::mpsc;
 
 const MSG_AUTH: u8 = 0;
