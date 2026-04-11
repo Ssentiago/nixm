@@ -140,7 +140,7 @@ const Dashboard = () => {
             onChange={e => setWsInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && wsInput.trim()) {
-                send(wsInput.trim());
+                send(wsInput.trim(), 2);
                 setWsInput('');
               }
             }}
@@ -150,7 +150,7 @@ const Dashboard = () => {
           <button
             onClick={() => {
               if (wsInput.trim()) {
-                send(wsInput.trim());
+                send(wsInput.trim(), 2);
                 setWsInput('');
               }
             }}

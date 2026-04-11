@@ -1,4 +1,4 @@
-use crate::state::AppState;
+use crate::state::{AppState, WsSender};
 use crate::tokens::decode_access_token;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -6,10 +6,12 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::Duration;
 use rmp_serde;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 const MSG_AUTH: u8 = 0;
 const MSG_DATA: u8 = 1;
+const MSG_KEEPALIVE: u8 = 2;
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
@@ -86,14 +88,20 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     // 2. Отправляем ACK
     // msgpack encode("ACK") = [163, 65, 67, 75]
     let ack_payload = rmp_serde::to_vec("ACK").unwrap();
-    let ack = build_packet(MSG_AUTH, &ack_payload);
+    let ack = build_service_packet(MSG_AUTH, &ack_payload);
     if socket.send(Message::Binary(ack.into())).await.is_err() {
         return;
     }
 
     // 3. Регистрируем соединение
     let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    state.connections.write().await.insert(user_id, tx);
+    state.connections.write().await.insert(
+        user_id,
+        WsSender {
+            sender: tx,
+            last_keepalive: Instant::now(),
+        },
+    );
 
     println!("WS authed: user_id={user_id}");
 
@@ -105,14 +113,47 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                     break;
                 }
             }
-            Some(result) = socket.recv() => {
+            Some(result) = socket.recv() =>
+            {
                 match result {
                     Ok(Message::Binary(bytes)) => {
                         if bytes.is_empty() { continue; }
                         match bytes[0] {
+                        MSG_KEEPALIVE => {
+                                let pong = build_service_packet(MSG_KEEPALIVE, &rmp_serde::to_vec("PONG").unwrap());
+                                if socket.send(Message::Binary(pong.into())).await.is_err() {
+                                     break;
+                                }
+
+                                println!("keepalive: user_id={user_id}");
+                                }
                             MSG_DATA => {
-                                println!("data from {user_id}: {} bytes", bytes.len() - 1);
-                                // TODO: роутинг сообщений получателю
+                                if bytes.len() < 10 {
+                                    println!("data packet too short: {} bytes", bytes.len());
+                                    continue;
+                                }
+                            let to = i64::from_be_bytes([
+                                bytes[1], bytes[2], bytes[3], bytes[4],
+                                bytes[5], bytes[6], bytes[7], bytes[8],
+                            ]) ;
+
+                            println!("data from {user_id}: {} bytes to {}", bytes.len() - 1, to);
+
+
+
+
+                            let payload = &bytes[9..];
+                            let text: String = match rmp_serde::from_slice(payload) {
+                                Ok(t) => t,
+                                Err(e) => {
+                                    println!("msgpack decode error: {e}");
+                                    continue;
+                                }
+                            };
+
+                                                        // TODO: роутинг
+                            println!("data from {user_id} to {to}: {text}");
+
                             }
                             _ => {}
                         }
@@ -129,7 +170,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     println!("WS disconnected: user_id={user_id}");
 }
 
-fn build_packet(msg_type: u8, payload: &[u8]) -> Vec<u8> {
+fn build_service_packet(msg_type: u8, payload: &[u8]) -> Vec<u8> {
     let mut packet = Vec::with_capacity(1 + payload.len());
     packet.push(msg_type);
     packet.extend_from_slice(payload);

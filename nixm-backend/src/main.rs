@@ -13,6 +13,7 @@ use std::env;
 use std::env::VarError;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::RwLock;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing_subscriber;
@@ -38,6 +39,25 @@ async fn main() {
         pool,
         connections: Arc::new(RwLock::new(HashMap::new())),
     };
+
+    let cleanup_state = state.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+
+            let now = Instant::now();
+            let mut connections = cleanup_state.connections.write().await;
+
+            connections.retain(|user_id, ws| {
+                let alive = now.duration_since(ws.last_keepalive).as_secs() < 90;
+                if !alive {
+                    println!("removing dead connection: user_id={user_id}");
+                }
+                alive
+            });
+        }
+    });
+
     let backend_port = std::env::var("BACKEND_PORT").unwrap_or("3000".to_string());
     let mut app = Router::new()
         .nest("/api/auth", auth::router())

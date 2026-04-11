@@ -1,10 +1,7 @@
-use sqlx::PgPool;
 use crate::models::refresh_token::RefreshToken;
+use sqlx::PgPool;
 
-pub async fn save(
-    pool: &PgPool,
-    token: &RefreshToken,
-) -> Result<(), sqlx::Error> {
+pub async fn save(pool: &PgPool, token: &RefreshToken) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"INSERT INTO refresh_tokens (user_id, token_jti, issued_at, expires_at, revoked, ip_address, user_agent)
         VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
@@ -21,11 +18,7 @@ pub async fn save(
     Ok(())
 }
 
-pub async fn is_valid(
-    pool: &PgPool,
-    user_id: &i64,
-    jti: &str,
-) -> Result<bool, sqlx::Error> {
+pub async fn is_valid(pool: &PgPool, user_id: &i64, jti: &str) -> Result<bool, sqlx::Error> {
     let exists = sqlx::query_scalar!(
         r#"SELECT EXISTS(
             SELECT 1 FROM refresh_tokens
@@ -35,18 +28,14 @@ pub async fn is_valid(
         user_id,
         jti
     )
-        .fetch_one(pool)
-        .await?
-        .unwrap_or(false);
+    .fetch_one(pool)
+    .await?
+    .unwrap_or(false);
 
     Ok(exists)
 }
 
-pub async fn revoke(
-    pool: &PgPool,
-    user_id: i64,
-    jti: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn revoke(pool: &PgPool, user_id: i64, jti: &str) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"UPDATE refresh_tokens
            SET revoked = TRUE
@@ -54,7 +43,7 @@ pub async fn revoke(
         user_id,
         jti
     )
-        .execute(pool)
-        .await?;
+    .execute(pool)
+    .await?;
     Ok(())
 }
