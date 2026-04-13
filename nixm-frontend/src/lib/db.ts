@@ -70,7 +70,7 @@ export async function generateAndSaveKeys(): Promise<void> {
   }
 }
 
-export async function getPrivateKey(): Promise<CryptoKey | null> {
+export async function getPrivateKey(): Promise<string | null> {
   console.log('[Keys] getPrivateKey → started');
   try {
     const db = await openDB();

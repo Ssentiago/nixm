@@ -16,7 +16,12 @@ export enum WebSocketMessageType {
 export type WebSocketMessage =
   | { type: WebSocketMessageType.Auth; payload: string }
   | { type: WebSocketMessageType.Keepalive; payload: 'PING' | 'PONG' }
-  | { type: WebSocketMessageType.Data; to: number; payload: string };
+  | {
+      type: WebSocketMessageType.Data;
+      to: number;
+      ivBase64: string;
+      encryptedPayload: string;
+    };
 // | { type: WebSocketMessageType.Typing; to: number; state: 'start' | 'stop' };
 
 export const buildWebSocketServicePacket = (
@@ -215,13 +220,13 @@ export const useWebSocket = (token: string | null) => {
       return;
     }
 
-    const packet = encodeToWebSocketPacket({
-      type: WebSocketMessageType.Data,
-      payload: text,
-      to,
-    });
+    // const packet = encodeToWebSocketPacket({
+    //   type: WebSocketMessageType.Data,
+    //   payload: text,
+    //   to,
+    // });
 
-    ws.current.send(packet);
+    // ws.current.send(packet);
 
     setMessages(prev => [
       ...prev,
