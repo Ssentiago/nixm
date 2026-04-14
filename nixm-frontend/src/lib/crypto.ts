@@ -38,7 +38,7 @@ export async function initializeDevice() {
   };
 }
 
-class NixmCrypto {
+export class NixmCrypto {
   myPrivateKeyBase64: string;
   theirPublicKeyBase64: string;
   aesKey: CryptoKey | null;

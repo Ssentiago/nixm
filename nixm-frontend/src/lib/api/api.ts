@@ -4,7 +4,7 @@ import { ApiClient } from '@/lib/api/definitions';
 import { KeysModule } from '@/lib/api/modules/Keys';
 import { InvitesModule } from '@/lib/api/modules/inviteLinks';
 
-export class Api implements ApiClient {
+class Api implements ApiClient {
   public auth: AuthModule;
   public keys: KeysModule;
   public invites: InvitesModule;
@@ -54,3 +54,5 @@ export class Api implements ApiClient {
     return response.json();
   }
 }
+
+export const api = new Api();

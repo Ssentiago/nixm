@@ -1,7 +1,7 @@
 // lib/websocket/useWebSocket.ts
-import { useEffect, useRef, useState } from 'react';
-import { WebSocketService, WSStatus, IncomingMessage } from './service';
-import { WSMsgType } from './protocol';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { WebSocketService, WSStatus } from './service';
+import { IncomingMessage, OutgoingMessage } from './protocol';
 
 interface UseWebSocketOptions {
   url: string;
@@ -11,63 +11,70 @@ interface UseWebSocketOptions {
 
 export function useWebSocket({ url, token, onMessage }: UseWebSocketOptions) {
   const serviceRef = useRef<WebSocketService | null>(null);
+  const onMessageRef = useRef(onMessage);
+  const tokenRef = useRef(token);
   const [status, setStatus] = useState<WSStatus>('disconnected');
   const [lastError, setLastError] = useState<Event | null>(null);
 
+  // Держим актуальные колбэки без пересоздания эффектов
   useEffect(() => {
-    if (!token) return;
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
 
-    // Создаём сервис один раз
-    if (!serviceRef.current) {
-      serviceRef.current = new WebSocketService(url, {
-        reconnectDelay: 1000,
-        maxReconnectDelay: 30000,
-        keepaliveInterval: 30000,
-        authTimeout: 5000,
-      });
-    }
+  // Создаём сервис один раз на url
+  useEffect(() => {
+    const service = new WebSocketService(url, {
+      reconnectDelay: 1_000,
+      maxReconnectDelay: 30_000,
+      keepaliveInterval: 30_000,
+      keepaliveTimeout: 90_000,
+      authTimeout: 5_000,
+    });
+    serviceRef.current = service;
 
-    const service = serviceRef.current;
-
-    // Подписываемся на события
-    const unsubStatus = service.on('status', setStatus);
-    const unsubError = service.on('error', e => {
+    service.on('status', setStatus);
+    service.on('error', e => {
       setLastError(e);
       console.error('WS error:', e);
     });
-    const unsubMessage = service.on('message', msg => {
-      // Крипто-расшифровка должна быть ВЫШЕ этого хука (в CryptoContext)
-      // Здесь только пробрасываем сырое сообщение
-      onMessage?.(msg);
+    service.on('message', msg => {
+      onMessageRef.current?.(msg);
     });
 
-    // Коннектимся
-    service.connect(token);
-
-    // Cleanup
     return () => {
-      unsubStatus();
-      unsubError();
-      unsubMessage();
-      // Не делаем service.disconnect() здесь — пусть живёт при размонтировании компонента
-      // Если нужно — вызывай явно из AuthContext.logout()
+      service.disconnect();
+      serviceRef.current = null;
     };
-  }, [token, url]);
+  }, [url]); // url меняется — пересоздаём сервис
 
-  // Публичные методы хука
-  const send = (msg: Parameters<WebSocketService['send']>[0]) => {
+  // Коннект/дисконнект при смене токена
+  useEffect(() => {
+    const service = serviceRef.current;
+    if (!service) return;
+
+    if (token) {
+      service.connect(() => tokenRef.current);
+    } else {
+      service.disconnect();
+    }
+  }, [token]);
+
+  const send = useCallback((msg: OutgoingMessage) => {
     serviceRef.current?.send(msg);
-  };
+  }, []);
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     serviceRef.current?.disconnect();
-  };
+  }, []);
 
   return {
     status,
     lastError,
     send,
     disconnect,
-    // Можно добавить: isConnected = status === 'authed'
+    isAuthed: status === 'authed',
   };
 }
