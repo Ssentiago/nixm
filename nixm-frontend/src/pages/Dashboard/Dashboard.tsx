@@ -87,7 +87,7 @@ const Dashboard = () => {
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [wsInput, setWsInput] = useState('');
-  const { token, user } = useAuth();
+  const { token, me } = useAuth();
   const { messages, send, connected } = useWebSocket(token);
 
   const activeChat = MOCK_CHATS.find(c => c.id === activeChatId) ?? null;

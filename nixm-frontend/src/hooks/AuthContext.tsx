@@ -8,21 +8,18 @@ import {
   SetStateAction,
   Dispatch,
 } from 'react';
-import * as wasi from 'node:wasi';
-
-interface User {
-  id: string;
-  username: string;
-}
+import { api } from '@/lib/api/api';
+import { ws } from '@/lib/websocket/service';
+import { AccessToken, User } from '@/lib/api/modules/auth';
 
 interface AuthContextType {
   token: string | null;
+  setToken: Dispatch<SetStateAction<string | null>>;
   login: (token: string) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
-  interceptor: (path: string, option?: RequestInit) => Promise<Response>;
-  user: User | null;
+  me: User | null;
   myDeviceId: string | null;
   setMyDeviceId: Dispatch<SetStateAction<string | null>>;
 }
@@ -32,30 +29,39 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<null | User>(null);
+  const [me, setMe] = useState<null | User>(null);
   const tokenRef = useRef<string | null>(null);
   const [myDeviceId, setMyDeviceId] = useState<string | null>(null);
 
-  let refreshPromise: Promise<string | null> | null = null;
+  let refreshPromise: Promise<AccessToken> | null = null;
 
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
+
+  useEffect(() => {
+    api.setToken(token);
+    if (token) {
+      ws.connect(() => token);
+    } else {
+      ws.disconnect();
+    }
+  }, [token]);
   const updateAccessToken = async () => {
     try {
       setIsLoading(true);
-      const resp = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        credentials: 'include', // отправляет куки
-      });
-
-      if (!resp.ok) {
-        throw new Error('No available session found');
+      if (!refreshPromise) {
+        refreshPromise = api.auth.updateAccessToken();
       }
 
-      const data = await resp.json();
+      const data = await refreshPromise;
 
-      tokenRef.current = data.access_token; // сразу обновляем ref
+      if (!data.access_token) {
+        console.error('No access token');
+        return;
+      }
+
+      tokenRef.current = data.access_token;
       setToken(data.access_token);
       return data.access_token;
     } catch (e) {
@@ -66,88 +72,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const apiInterceptor = async (path: string, option?: RequestInit) => {
-    let response;
-    const opts = option ?? {};
-
-    response = await fetch(path, {
-      ...opts,
-      headers: {
-        ...(opts.headers ?? {}),
-        Authorization: `Bearer ${tokenRef.current}`,
-      },
-    });
-
-    if (response.status !== 401) {
-      return response;
-    }
-
-    if (!refreshPromise) {
-      refreshPromise = updateAccessToken();
-    }
-
-    const access = await refreshPromise;
-
-    if (!access) {
-      return response;
-    }
-
-    response = await fetch(path, {
-      ...opts,
-      headers: {
-        ...(opts.headers ?? {}),
-        Authorization: `Bearer ${access}`,
-      },
-    });
-
-    return response;
-  };
-
   useEffect(() => {
-    console.log('got token: ', token);
-    if (token) {
-      const resp = apiInterceptor('/api/auth/me', {
-        method: 'GET',
-      })
-        .then(async resp => {
-          const data = await resp.json();
-          const user: User = data.user;
-          setUser(user);
-        })
-        .catch(e => {
-          setUser(null);
-        });
-    } else {
-      setUser(null);
-    }
+    (async () => {
+      const me = await api.auth.me();
+      setMe(me);
+    })();
   }, [token]);
 
   useEffect(() => {
     updateAccessToken();
   }, []);
 
-  const login = (newToken: string) => {
-    setToken(newToken);
+  const login = (token: string) => {
+    setToken(token);
   };
 
   const logout = async () => {
     setToken(null);
-    await apiInterceptor('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-    });
+    await api.auth.logout();
+    ws.disconnect();
   };
 
   return (
     <AuthContext.Provider
       value={{
         token,
+        setToken,
         login,
         logout,
         isAuthenticated: !!token,
         isLoading,
-        interceptor: apiInterceptor,
-        user,
+        me,
         myDeviceId,
         setMyDeviceId,
       }}

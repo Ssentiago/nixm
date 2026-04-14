@@ -1,8 +1,12 @@
 import { ApiClient } from '@/lib/api/definitions';
 
-interface AccessToken {
+export interface AccessToken {
   access_token: string;
   expires_in: number;
+}
+export interface User {
+  id: string;
+  username: string;
 }
 
 export class AuthModule {
@@ -30,7 +34,7 @@ export class AuthModule {
   }
 
   me() {
-    // return this.api.request<User>('/auth/me');
+    return this.api.request<User>('/auth/me');
   }
 
   updateAccessToken() {

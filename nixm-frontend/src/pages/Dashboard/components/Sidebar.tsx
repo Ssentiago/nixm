@@ -22,7 +22,7 @@ export const Sidebar = ({
     ? chats.filter(c => c.username.toLowerCase().includes(query.toLowerCase()))
     : chats;
 
-  const { user } = useAuth();
+  const { me } = useAuth();
   const [openSettings, setOpenSettings] = useState(false);
 
   return (
@@ -67,7 +67,7 @@ export const Sidebar = ({
             <OnlineDot online={true} />
           </div>
           <span className='text-xs font-mono text-muted-foreground'>
-            {user ? user.username : 'unknown'}
+            {me ? me.username : 'unknown'}
           </span>
           <button
             onClick={() => setOpenSettings(true)}

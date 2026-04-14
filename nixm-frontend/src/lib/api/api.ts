@@ -10,7 +10,7 @@ class Api implements ApiClient {
   public invites: InvitesModule;
 
   private token: string | null = null;
-  private readonly API_PREFIX = '/api'; // Жёстко зашито
+  private readonly API_PREFIX = '/api';
 
   constructor() {
     this.auth = new AuthModule(this);

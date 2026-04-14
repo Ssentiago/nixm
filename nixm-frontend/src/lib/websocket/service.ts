@@ -25,7 +25,7 @@ interface WSConfig {
   authTimeout?: number; // сколько ждём ACK после отправки токена, ms
 }
 
-export class WebSocketService {
+class WebSocketService {
   private ws: WebSocket | null = null;
   private status: WSStatus = 'disconnected';
   private getToken: () => string | null = () => null;
@@ -239,3 +239,13 @@ export class WebSocketService {
     this.listeners.status?.(s);
   }
 }
+
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
+
+export const ws = new WebSocketService(WS_URL, {
+  reconnectDelay: 1_000,
+  maxReconnectDelay: 30_000,
+  keepaliveInterval: 30_000,
+  keepaliveTimeout: 90_000,
+  authTimeout: 5_000,
+});
