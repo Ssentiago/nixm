@@ -1,9 +1,9 @@
 // lib/websocket/protocol.ts
 import { encode, decode } from '@msgpack/msgpack';
 
-export const MSG_AUTH = 0x00;
-export const MSG_DATA = 0x01;
-export const MSG_KEEPALIVE = 0x02;
+export const MSG_AUTH = 0;
+export const MSG_DATA = 1;
+export const MSG_KEEPALIVE = 2;
 
 // Исходящие пакеты (клиент → сервер)
 export type OutgoingMessage =
@@ -13,6 +13,7 @@ export type OutgoingMessage =
       type: typeof MSG_DATA;
       to: number;
       iv: Uint8Array;
+      timestamp: number;
       ciphertext: Uint8Array;
     };
 
@@ -23,6 +24,8 @@ export type IncomingMessage =
   | {
       type: typeof MSG_DATA;
       from: number;
+      messageId: string;
+      timestamp: number;
       iv: Uint8Array;
       ciphertext: Uint8Array;
     };

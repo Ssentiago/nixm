@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { getPrivateKey } from '@/lib/db';
+import { getPrivateKey } from '@/lib/db/keys';
 import { PublicKeyRecord } from '@/models/publicKeysRecord';
 import { api } from '@/lib/api/api';
 import { NixmCrypto } from '@/lib/crypto';

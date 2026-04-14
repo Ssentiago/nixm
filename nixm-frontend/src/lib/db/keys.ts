@@ -1,4 +1,4 @@
-import { initializeDevice } from './crypto';
+import { initializeDevice } from '../crypto';
 
 const DB_NAME = 'nixm_keys';
 const STORE_NAME = 'keys';

@@ -5,6 +5,8 @@ import {
   useEffect,
   ReactNode,
   useRef,
+  SetStateAction,
+  Dispatch,
 } from 'react';
 import * as wasi from 'node:wasi';
 
@@ -21,6 +23,8 @@ interface AuthContextType {
   isLoading: boolean;
   interceptor: (path: string, option?: RequestInit) => Promise<Response>;
   user: User | null;
+  myDeviceId: string | null;
+  setMyDeviceId: Dispatch<SetStateAction<string | null>>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -30,6 +34,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<null | User>(null);
   const tokenRef = useRef<string | null>(null);
+  const [myDeviceId, setMyDeviceId] = useState<string | null>(null);
 
   let refreshPromise: Promise<string | null> | null = null;
 
@@ -143,6 +148,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isLoading,
         interceptor: apiInterceptor,
         user,
+        myDeviceId,
+        setMyDeviceId,
       }}
     >
       {children}
