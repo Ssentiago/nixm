@@ -1,15 +1,16 @@
-export interface Chat {
-  id: number;
+export type Chat = {
+  userId: number;
   username: string;
   lastMessage: string;
-  time: string;
-  unread: number;
-  online: boolean;
-}
+  lastActivity: number;
+  unreadCount: number;
+};
 
-export interface Message {
-  id: number;
-  fromMe: boolean;
+export type Message = {
+  messageId: string;
+  from: number;
   text: string;
-  time: string;
-}
+  timestamp: number;
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+  direction: 'sent' | 'received';
+};

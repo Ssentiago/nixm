@@ -4,16 +4,21 @@ export const MSG_AUTH = 0;
 export const MSG_DATA = 1;
 export const MSG_KEEPALIVE = 2;
 
+type MessagePayload = {
+  device_id: string;
+  iv: Uint8Array;
+  ciphertext: Uint8Array;
+};
+
 export type OutgoingMessage =
-  | { type: typeof MSG_AUTH; payload: string }
+  | { type: typeof MSG_AUTH; payload: string; deviceId: string }
   | { type: typeof MSG_KEEPALIVE; payload: 'PING' }
   | {
       type: typeof MSG_DATA;
       to: number;
       messageId: string;
       timestamp: number;
-      iv: Uint8Array;
-      ciphertext: Uint8Array;
+      payloads: MessagePayload[];
     };
 
 export type IncomingMessage =
@@ -33,7 +38,7 @@ export type IncomingMessage =
 export function encodePacket(msg: OutgoingMessage): Uint8Array {
   switch (msg.type) {
     case MSG_AUTH: {
-      const tokenBytes = encode(msg.payload);
+      const tokenBytes = encode([msg.payload, msg.deviceId]); // массив из двух строк
       const buf = new Uint8Array(1 + tokenBytes.length);
       buf[0] = MSG_AUTH;
       buf.set(tokenBytes, 1);
@@ -49,9 +54,11 @@ export function encodePacket(msg: OutgoingMessage): Uint8Array {
     }
 
     case MSG_DATA: {
-      // [0x01][to: 8b][timestamp: 8b][messageId: 36b][iv: 12b][ciphertext: Nb]
-      const messageIdBytes = new TextEncoder().encode(msg.messageId); // 36 байт ASCII
-      const buf = new Uint8Array(1 + 8 + 8 + 36 + 12 + msg.ciphertext.length);
+      // [0x01][to: 8b][timestamp: 8b][messageId: 36b][msgpack(payloads)]
+      const messageIdBytes = new TextEncoder().encode(msg.messageId);
+      const packedPayloads = encode(msg.payloads);
+
+      const buf = new Uint8Array(1 + 8 + 8 + 36 + packedPayloads.length);
       const view = new DataView(buf.buffer);
 
       buf[0] = MSG_DATA;
@@ -66,9 +73,8 @@ export function encodePacket(msg: OutgoingMessage): Uint8Array {
       view.setUint32(9, tsHi, false);
       view.setUint32(13, tsLo, false);
 
-      buf.set(messageIdBytes, 17); // 36b
-      buf.set(msg.iv, 53); // 12b
-      buf.set(msg.ciphertext, 65);
+      buf.set(messageIdBytes, 17);
+      buf.set(packedPayloads, 53);
 
       return buf;
     }

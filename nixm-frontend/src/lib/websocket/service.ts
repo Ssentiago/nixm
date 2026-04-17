@@ -53,8 +53,9 @@ class WebSocketService {
     };
   }
 
-  connect(getToken: () => string | null) {
+  connect(getToken: () => string | null, getMyDeviceId: () => string | null) {
     this.getToken = getToken; // всегда обновляем — чтобы реконнект брал свежий токен
+    this.getMyDeviceId = getMyDeviceId();
     if (
       this.ws?.readyState === WebSocket.OPEN ||
       this.ws?.readyState === WebSocket.CONNECTING
@@ -103,7 +104,7 @@ class WebSocketService {
     }
 
     this.setStatus('connected');
-    this.send({ type: MSG_AUTH, payload: token });
+    this.send({ type: MSG_AUTH, payload: token, deviceId: myDeviceId });
 
     // Таймаут на ACK
     this.authTimer = setTimeout(() => {

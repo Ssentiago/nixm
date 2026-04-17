@@ -16,16 +16,14 @@ import {
 } from 'react';
 import { useAuth } from '@/hooks/AuthContext';
 import { useCryptoContext } from '@/hooks/CryptoContext';
-import { IncomingMessage, MSG_DATA } from '@/lib/websocket/protocol';
-import { arrayBufferToBase64 } from '@/lib/crypto';
+import {
+  encodePacket,
+  IncomingMessage,
+  MSG_DATA,
+} from '@/lib/websocket/protocol';
+import { arrayBufferToBase64, base64ToUint8Array } from '@/lib/crypto';
 import { api } from '@/lib/api/api';
-
-type ChatMeta = {
-  userId: string;
-  lastMessage: string;
-  lastActivity: number;
-  unreadCount: number;
-};
+import { ws } from '@/lib/websocket/service';
 
 type ChatMessage = {
   messageId: string;
@@ -36,14 +34,24 @@ type ChatMessage = {
   direction: 'sent' | 'received';
 };
 
+type UserID = number;
+
+type ChatMeta = {
+  userId: number;
+  username: string;
+  lastMessage: string;
+  lastActivity: number;
+  unreadCount: number;
+};
+
 type ChatContextType = {
-  chats: Map<string, ChatMeta>;
+  chats: Map<number, ChatMeta>;
   activeMessages: ChatMessage[];
-  currentChatId: string | null;
-  openChat: (userId: string) => Promise<void>;
-  sendMessage: (userId: string, text: string) => Promise<void>;
+  currentChatId: number | null;
+  openChat: (userId: number, username: string) => Promise<void>;
+  sendMessage: (userId: number, text: string) => Promise<void>;
   loadMoreHistory: (
-    userId: string,
+    userId: number,
     cursor: number,
   ) => Promise<{ hasMore: boolean }>;
   handleIncomingMessage: (wsData: IncomingMessage) => Promise<void>;
@@ -113,26 +121,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const openChat = useCallback(
-    async (userId: string) => {
+    async (userId: number, username: string) => {
       setCurrentChatId(userId);
       currentChatIdRef.current = userId;
 
       const meta = chatsRef.current.get(userId);
       chatsRef.current.set(userId, {
         userId,
+        username,
         lastMessage: meta?.lastMessage ?? '',
         lastActivity: meta?.lastActivity ?? Date.now(),
         unreadCount: 0,
       });
       forceUpdateChats();
 
-      const stored = await loadMessages(userId, 50);
+      const stored = await loadMessages(String(userId), 50);
       const decrypted = await decryptBatch(stored);
       setActiveMessages(decrypted);
     },
     [decryptBatch],
   );
-
   const sendMessage = useCallback(
     async (userId: string, text: string) => {
       if (!me?.id || !myDeviceId) throw new Error('Not authenticated');
@@ -140,71 +148,46 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const messageId = crypto.randomUUID();
       const timestamp = Date.now();
 
-      // Шифруем для каждого устройства получателя
       const encrypted = await encryptMessage(userId, text);
+      const myPayload =
+        encrypted.find(e => e.deviceId === myDeviceId) ?? encrypted[0];
 
-      // Берём payload для нашего девайса — чтобы сохранить в IDB и уметь расшифровать потом
-      const myPayload = encrypted.find(e => e.deviceId === myDeviceId);
-
-      if (!myPayload) {
-        // Нас нет в списке устройств получателя (нормально если у нас одно устройство)
-        // Сохраняем первый попавшийся — или можно шифровать отдельно для себя
-        console.warn(
-          'Own device not found in encrypted list, storing first payload',
-        );
-      }
-
-      const storagePayload = myPayload ?? encrypted[0];
-
-      const stored: StoredMessage = {
+      await saveMessage({
         messageId,
         from: String(me.id),
         to: userId,
         direction: 'sent',
-        ciphertext: storagePayload.encryptedPayload.data,
-        iv: storagePayload.encryptedPayload.iv,
+        ciphertext: myPayload.encryptedPayload.data,
+        iv: myPayload.encryptedPayload.iv,
         timestamp,
         status: 'pending',
-      };
+      });
 
-      await saveMessage(stored);
-
-      // Оптимистично добавляем в стейт
-      const optimistic: ChatMessage = {
+      ws.send({
+        type: MSG_DATA,
+        to: Number(userId),
         messageId,
-        from: String(me.id),
-        text,
         timestamp,
-        status: 'pending',
-        direction: 'sent',
-      };
+        payloads: encrypted.map(({ deviceId, encryptedPayload }) => ({
+          device_id: deviceId,
+          iv: base64ToUint8Array(encryptedPayload.iv),
+          ciphertext: base64ToUint8Array(encryptedPayload.data),
+        })),
+      });
 
       if (currentChatIdRef.current === userId) {
-        setActiveMessages(prev => [...prev, optimistic]);
+        setActiveMessages(prev => [
+          ...prev,
+          {
+            messageId,
+            from: String(me.id),
+            text,
+            timestamp,
+            status: 'pending',
+            direction: 'sent',
+          },
+        ]);
       }
-
-      // Обновляем мету чата
-      chatsRef.current.set(userId, {
-        userId,
-        lastMessage: text,
-        lastActivity: timestamp,
-        unreadCount: 0,
-      });
-      forceUpdateChats();
-
-      // Отправляем на сервер — payload для каждого устройства
-      await api.messages.send({
-        messageId,
-        to: userId,
-        payloads: encrypted.map(e => ({
-          deviceId: e.deviceId,
-          ciphertext: e.encryptedPayload.data,
-          iv: e.encryptedPayload.iv,
-        })),
-        timestamp,
-      });
-
-      // TODO: обновить статус на 'sent' после ответа сервера
     },
     [me, myDeviceId, encryptMessage],
   );
@@ -223,7 +206,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const timestamp = wsData.timestamp ?? Date.now();
       const ciphertextBase64 = arrayBufferToBase64(wsData.ciphertext);
 
-      // Сохраняем в IDB
       const stored: StoredMessage = {
         messageId,
         from: fromId,

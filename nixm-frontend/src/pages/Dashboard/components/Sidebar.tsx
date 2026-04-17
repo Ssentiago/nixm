@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { SearchBar } from '@/pages/Dashboard/components/SearchBar';
 import { ChatItem } from '@/pages/Dashboard/components/ChatItem';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { OnlineDot } from '@/pages/Dashboard/components/OnlineDot';
 import { useAuth } from '@/hooks/AuthContext';
 import { FaGear } from 'react-icons/fa6';
 import { Settings } from './Settings';
@@ -14,8 +13,8 @@ export const Sidebar = ({
   onSelect,
 }: {
   chats: Chat[];
-  activeId: number | null;
-  onSelect: (id: number) => void;
+  activeId: string | null;
+  onSelect: (userId: string) => void;
 }) => {
   const [query, setQuery] = useState('');
   const filtered = query.trim()
@@ -43,10 +42,10 @@ export const Sidebar = ({
         {filtered.length > 0 ? (
           filtered.map(chat => (
             <ChatItem
-              key={chat.id}
+              key={chat.userId}
               chat={chat}
-              active={chat.id === activeId}
-              onClick={() => onSelect(chat.id)}
+              active={chat.userId === activeId}
+              onClick={() => onSelect(chat.userId)}
             />
           ))
         ) : (
@@ -58,16 +57,13 @@ export const Sidebar = ({
 
       <div className='p-3 border-t border-border'>
         <div className='flex items-center gap-2'>
-          <div className='relative'>
-            <Avatar className='w-6 h-6'>
-              <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono'>
-                M
-              </AvatarFallback>
-            </Avatar>
-            <OnlineDot online={true} />
-          </div>
+          <Avatar className='w-6 h-6'>
+            <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono'>
+              {me?.username?.[0]?.toUpperCase() ?? '?'}
+            </AvatarFallback>
+          </Avatar>
           <span className='text-xs font-mono text-muted-foreground'>
-            {me ? me.username : 'unknown'}
+            {me?.username ?? 'unknown'}
           </span>
           <button
             onClick={() => setOpenSettings(true)}

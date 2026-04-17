@@ -10,8 +10,8 @@ export const ChatsOverlay = ({
   onClose,
 }: {
   chats: Chat[];
-  activeId: number | null;
-  onSelect: (id: number) => void;
+  activeId: string | null;
+  onSelect: (userId: string) => void;
   onClose: () => void;
 }) => {
   const [query, setQuery] = useState('');
@@ -51,11 +51,11 @@ export const ChatsOverlay = ({
           {filtered.length > 0 ? (
             filtered.map(chat => (
               <ChatItem
-                key={chat.id}
+                key={chat.userId}
                 chat={chat}
-                active={chat.id === activeId}
+                active={chat.userId === activeId}
                 onClick={() => {
-                  onSelect(chat.id);
+                  onSelect(chat.userId);
                   onClose();
                 }}
               />

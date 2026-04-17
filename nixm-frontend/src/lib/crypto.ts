@@ -7,6 +7,10 @@ export function base64ToArrayBuffer(base64: string) {
   return bytes.buffer;
 }
 
+export function base64ToUint8Array(base64: string): Uint8Array {
+  return new Uint8Array(base64ToArrayBuffer(base64));
+}
+
 export function arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array) {
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   let binary = '';
