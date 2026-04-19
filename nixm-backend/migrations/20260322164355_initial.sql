@@ -1,9 +1,13 @@
 CREATE TABLE IF NOT EXISTS users
 (
-    id BIGSERIAL PRIMARY KEY,
+    id            BIGSERIAL PRIMARY KEY,
     username      TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW());
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    bio           VARCHAR(160),
+    avatar_url    TEXT
+);
+
 
 
 

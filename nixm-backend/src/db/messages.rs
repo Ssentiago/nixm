@@ -24,6 +24,16 @@ pub struct PendingPayload {
     pub payload_id: i64,
 }
 
+#[derive(sqlx::FromRow)]
+pub struct MessageWithPayload {
+    pub message_uuid: String,
+    pub from_user_id: i64,
+    pub to_user_id: i64,
+    pub timestamp: i64,
+    pub iv: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+}
+
 pub async fn save_message(
     pool: &PgPool,
     message_uuid: &str,
@@ -125,5 +135,47 @@ pub async fn get_payload_id(
         device_id,
     )
     .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_history(
+    pool: &PgPool,
+    user_a: i64,
+    user_b: i64,
+    device_id: &str,
+    before: Option<i64>,
+    limit: i64,
+) -> Result<Vec<MessageWithPayload>, sqlx::Error> {
+    let before = before.unwrap_or(i64::MAX);
+
+    sqlx::query_as!(
+        MessageWithPayload,
+        r#"
+        SELECT
+            m.message_uuid,
+            m.from_user_id,
+            m.to_user_id,
+            m.timestamp,
+            mp.iv,
+            mp.ciphertext
+        FROM messages m
+        JOIN message_payloads mp ON mp.message_id = m.id
+        WHERE mp.device_id = $3
+          AND m.timestamp < $4
+          AND (
+            (m.from_user_id = $1 AND m.to_user_id = $2)
+            OR
+            (m.from_user_id = $2 AND m.to_user_id = $1)
+          )
+        ORDER BY m.timestamp DESC
+        LIMIT $5
+        "#,
+        user_a,
+        user_b,
+        device_id,
+        before,
+        limit,
+    )
+    .fetch_all(pool)
     .await
 }

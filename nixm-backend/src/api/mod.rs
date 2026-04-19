@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod invite_links;
 pub mod keys;
-pub mod user;
+pub mod messages;
+pub mod users;
 pub mod ws;

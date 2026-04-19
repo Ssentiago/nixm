@@ -8,7 +8,10 @@ export class KeysModule {
   upload(publicKey: string, deviceId: string) {
     return this.api.request<void>('/keys/upload', {
       method: 'POST',
-      body: JSON.stringify({ publicKey, deviceId }),
+      headers: {
+        'X-Device-ID': deviceId,
+      },
+      body: JSON.stringify({ public_key: publicKey }),
     });
   }
 

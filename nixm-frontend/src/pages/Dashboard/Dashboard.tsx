@@ -7,17 +7,29 @@ import { EmptyState } from '@/pages/Dashboard/components/EmptyState';
 import { ChatView } from '@/pages/Dashboard/components/ChatView';
 import { ChatsOverlay } from '@/pages/Dashboard/components/ChatsOverlay';
 import { ws } from '@/lib/websocket/service';
-import { IncomingMessage } from '@/lib/websocket/protocol';
+import { IncomingMessage, MSG_CHAT_REQUEST } from '@/lib/websocket/protocol';
+import { useNotifications } from '@/hooks/NotificationContext';
 
 const Dashboard = () => {
   const [overlayOpen, setOverlayOpen] = useState(false);
   const { me } = useAuth();
   const { chats, currentChatId, openChat, handleIncomingMessage } =
     useChatContext();
+  const { addNotification } = useNotifications();
 
-  // Подключаем WS-листенер для входящих сообщений
   useEffect(() => {
     const unsub = ws.on('message', (msg: IncomingMessage) => {
+      if (msg.type === MSG_CHAT_REQUEST) {
+        addNotification({
+          id: `chat_request_${msg.from}`,
+          type: 'chat_request',
+          from: msg.from,
+          username: msg.username,
+          avatar_url: msg.avatar_url,
+          at: Date.now(),
+        });
+        return;
+      }
       handleIncomingMessage(msg);
     });
     return unsub;

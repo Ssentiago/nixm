@@ -4,24 +4,37 @@ export interface AccessToken {
   access_token: string;
   expires_in: number;
 }
+
 export interface User {
   id: string;
   username: string;
+  bio: string;
+  avatar_url: string;
 }
 
 export class AuthModule {
   constructor(private api: ApiClient) {}
 
-  login(credentials: { email: string; password: string }) {
-    return this.api.request<{ token: string }>('/auth/login', {
+  async login(credentials: { username: string; password: string }) {
+    const rawData = await this.api.request<{
+      access_token: string;
+      expires_in: string;
+    }>('/auth/login', {
       method: 'POST',
+      credentials: 'include',
       body: JSON.stringify(credentials),
     });
+
+    return {
+      access_token: rawData.access_token,
+      expires_in: Number(rawData.expires_in),
+    };
   }
 
-  register(data: { email: string; password: string; username: string }) {
+  register(data: { username: string; password: string }) {
     return this.api.request('/auth/register', {
       method: 'POST',
+      credentials: 'include',
       body: JSON.stringify(data),
     });
   }

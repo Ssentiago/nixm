@@ -1,3 +1,29 @@
+export async function computeSafetyNumber(
+  myPublicKey: string,
+  theirPublicKey: string,
+  myUserId: string,
+  theirUserId: string,
+): Promise<string> {
+  // Сортируем по userId чтобы результат был одинаковый у обоих
+  const [first, second] =
+    myUserId < theirUserId
+      ? [myPublicKey + myUserId, theirPublicKey + theirUserId]
+      : [theirPublicKey + theirUserId, myPublicKey + myUserId];
+
+  const raw = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(first + second),
+  );
+
+  // Форматируем как 12 групп по 5 цифр — как у Signal
+  return Array.from(new Uint8Array(raw))
+    .map(b => b.toString().padStart(3, '0'))
+    .join('')
+    .slice(0, 60)
+    .match(/.{5}/g)!
+    .join(' ');
+}
+
 export function base64ToArrayBuffer(base64: string) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);

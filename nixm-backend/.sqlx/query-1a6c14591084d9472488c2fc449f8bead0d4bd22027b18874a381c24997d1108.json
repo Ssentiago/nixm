@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            m.message_uuid,\n            m.from_user_id,\n            m.timestamp,\n            mp.iv,\n            mp.ciphertext,\n            mp.id as payload_id\n        FROM message_payloads mp\n        JOIN messages m ON m.id = mp.message_id\n        WHERE mp.device_id = $1 AND mp.delivered = FALSE\n        ORDER BY m.timestamp ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "message_uuid",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "from_user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "timestamp",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "iv",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "ciphertext",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 5,
+        "name": "payload_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1a6c14591084d9472488c2fc449f8bead0d4bd22027b18874a381c24997d1108"
+}

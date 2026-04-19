@@ -1,21 +1,36 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/AuthContext';
-import { hasKeys, generateAndSaveKeys, getPublicData } from '@/lib/crypto';
+import { generateAndSaveKeys, getPublicData } from '@/lib/db/keys';
+import { api, ApiError } from '@/lib/api/api';
 
 type Status = 'loading' | 'ready' | 'error';
 
 const KeysGuard = ({ children }: { children: React.ReactNode }) => {
-  const { interceptor } = useAuth();
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
+  const { setMyDeviceId, me, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!me) {
+      setStatus('ready');
+      return;
+    }
+    syncKeys();
+  }, [me, isLoading]);
 
   const syncKeys = useCallback(async () => {
+    console.log(`sync leys called. me: ${JSON.stringify(me)}`);
+    if (!me) {
+      setStatus('loading');
+      return;
+    }
     try {
-      let publicData = await getPublicData();
+      let publicData = await getPublicData(me.id);
+      console.log(publicData);
 
       if (!publicData) {
-        await generateAndSaveKeys();
-        publicData = await getPublicData();
+        publicData = await generateAndSaveKeys(me.id); // берём данные сразу
       }
 
       if (!publicData) {
@@ -23,31 +38,19 @@ const KeysGuard = ({ children }: { children: React.ReactNode }) => {
         setStatus('error');
         return;
       }
-      const resp = await interceptor('/api/keys/upload', {
-        method: 'POST',
-        headers: {
-          'X-Device-ID': publicData.deviceId,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          public_key: publicData.publicPem,
-        }),
-      });
 
-      if (resp.status === 500) {
-        setError('Server error. Try again later.');
-        setStatus('error');
-        return;
-      }
-
-      if (resp.status === 200) {
-        setStatus('ready');
-      }
+      await api.keys.upload(publicData.publicKey, publicData.deviceId);
+      setMyDeviceId(publicData.deviceId);
+      setStatus('ready');
     } catch (e) {
-      setError('Failed to initialize encryption keys.');
+      if (e instanceof ApiError) {
+        setError(e.message);
+      } else {
+        setError('Failed to initialize encryption keys.');
+      }
       setStatus('error');
     }
-  }, [interceptor]);
+  }, [me, isLoading]);
 
   useEffect(() => {
     syncKeys();

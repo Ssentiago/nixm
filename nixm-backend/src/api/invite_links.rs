@@ -1,5 +1,6 @@
 use crate::db;
 use crate::middleware::auth::auth_middleware;
+use crate::models::user::UserResponse;
 use crate::state::AppState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -125,11 +126,35 @@ async fn delete_invite(
     }
 }
 
-// ====================== ROUTER ======================
+async fn resolve(State(state): State<AppState>, Path(code): Path<String>) -> impl IntoResponse {
+    let invite = match db::invite_links::resolve(&state.pool, &code).await {
+        Ok(Some(i)) => i,
+        Ok(None) => {
+            return (StatusCode::NOT_FOUND, "Invalid or expired invite code").into_response();
+        }
+        Err(e) => {
+            eprintln!("resolve invite error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    let user = match db::users::find_by_id(&state.pool, invite.user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => return (StatusCode::NOT_FOUND, "User not found").into_response(),
+        Err(e) => {
+            eprintln!("find user error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    let response = UserResponse::from(user);
+    (StatusCode::OK, Json(json!(response))).into_response()
+}
 
 pub fn router() -> Router<AppState> {
     let protected = Router::new()
         .route("/", post(create_invite).get(get_user_invites))
+        .route("/resolve/{code}", get(resolve))
         .route("/{id}/revoke", post(revoke_invite))
         .route("/{id}", delete(delete_invite))
         .layer(middleware::from_fn(auth_middleware));

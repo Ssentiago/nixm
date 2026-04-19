@@ -1,5 +1,5 @@
 export type Chat = {
-  userId: number;
+  userId: string;
   username: string;
   lastMessage: string;
   lastActivity: number;
@@ -8,7 +8,7 @@ export type Chat = {
 
 export type Message = {
   messageId: string;
-  from: number;
+  from: string;
   text: string;
   timestamp: number;
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';

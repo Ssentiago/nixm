@@ -5,10 +5,11 @@ use sqlx::{PgPool, Row};
 #[derive(Serialize)]
 pub struct InviteLink {
     pub id: i64,
+    pub user_id: i64,
     pub code: String,
     pub invite_type: String,
     pub expires_at: Option<DateTime<Utc>>,
-    pub used: bool,
+    pub use_count: Option<i32>,
     pub revoked: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -35,7 +36,7 @@ pub async fn create(
             code,
             type as "invite_type",
             expires_at,
-            used,
+            use_count,
             revoked,
             created_at
         "#,
@@ -49,10 +50,11 @@ pub async fn create(
 
     Ok(InviteLink {
         id: row.id,
+        user_id,
         code: row.code,
         invite_type: row.invite_type,
         expires_at: row.expires_at,
-        used: row.used,
+        use_count: row.use_count,
         revoked: row.revoked,
         created_at: row.created_at,
     })
@@ -65,9 +67,10 @@ pub async fn get_all_for_user(pool: &PgPool, user_id: i64) -> Result<Vec<InviteL
         SELECT
             id,
             code,
+            user_id,
             type as "invite_type",
             expires_at,
-            used,
+            use_count,
             revoked,
             created_at
         FROM user_invite_links
@@ -115,26 +118,52 @@ pub async fn delete(pool: &PgPool, user_id: i64, id: i64) -> Result<bool, sqlx::
     Ok(result.rows_affected() > 0)
 }
 
-// Опционально: проверить ссылку при регистрации/приглашении
-pub async fn find_by_code(pool: &PgPool, code: &str) -> Result<Option<InviteLink>, sqlx::Error> {
-    sqlx::query_as!(
+pub async fn resolve(pool: &PgPool, code: &str) -> Result<Option<InviteLink>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    let invite = sqlx::query_as!(
         InviteLink,
         r#"
         SELECT
             id,
+            user_id,
             code,
             type as "invite_type",
             expires_at,
-            used,
+            use_count,
             revoked,
             created_at
         FROM user_invite_links
         WHERE code = $1
           AND NOT revoked
           AND (expires_at IS NULL OR expires_at > NOW())
+        FOR UPDATE
         "#,
         code
     )
-    .fetch_optional(pool)
-    .await
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some(invite) = invite else {
+        return Ok(None);
+    };
+
+    sqlx::query!(
+        r#"
+        UPDATE user_invite_links
+        SET
+            use_count  = use_count + 1,
+            updated_at = NOW(),
+            revoked    = CASE WHEN type = 'one-time' THEN TRUE ELSE revoked END,
+            revoked_at = CASE WHEN type = 'one-time' THEN NOW() ELSE revoked_at END
+        WHERE id = $1
+        "#,
+        invite.id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Some(invite))
 }

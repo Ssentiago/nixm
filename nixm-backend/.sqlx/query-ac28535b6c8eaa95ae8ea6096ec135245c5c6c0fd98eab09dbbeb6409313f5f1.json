@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE user_invite_links\n        SET\n            use_count  = use_count + 1,\n            updated_at = NOW(),\n            revoked    = CASE WHEN type = 'one-time' THEN TRUE ELSE revoked END,\n            revoked_at = CASE WHEN type = 'one-time' THEN NOW() ELSE revoked_at END\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ac28535b6c8eaa95ae8ea6096ec135245c5c6c0fd98eab09dbbeb6409313f5f1"
+}

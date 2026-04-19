@@ -1,3 +1,5 @@
+import { User } from '@/lib/api/modules/auth';
+
 export interface CreateInviteRequest {
   invite_type: 'one-time' | 'timed';
   expires_in?: number; // секунды, только для timed
@@ -52,5 +54,8 @@ export class InvitesModule {
     return this.api.request<void>(`/invites/${id}`, {
       method: 'DELETE',
     });
+  }
+  resolve(code: string): Promise<User> {
+    return this.api.request<User>(`/invites/resolve/${code}`);
   }
 }

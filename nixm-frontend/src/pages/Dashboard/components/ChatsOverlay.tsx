@@ -11,7 +11,7 @@ export const ChatsOverlay = ({
 }: {
   chats: Chat[];
   activeId: string | null;
-  onSelect: (userId: string) => void;
+  onSelect: (userId: string, username: string) => void;
   onClose: () => void;
 }) => {
   const [query, setQuery] = useState('');
@@ -55,7 +55,7 @@ export const ChatsOverlay = ({
                 chat={chat}
                 active={chat.userId === activeId}
                 onClick={() => {
-                  onSelect(chat.userId);
+                  onSelect(chat.userId, chat.username);
                   onClose();
                 }}
               />

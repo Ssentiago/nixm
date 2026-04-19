@@ -1,26 +1,27 @@
 use crate::db;
-use crate::state::AppState;
-use crate::tokens::{RefreshClaims, decode_refresh_token};
-use axum::http::{HeaderMap, StatusCode};
-use axum::http::{HeaderValue, header};
-use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json, Router, extract::State, middleware, routing::post};
-use axum_extra::extract::CookieJar;
-use jsonwebtoken::{DecodingKey, Validation, decode};
-use jsonwebtoken::{EncodingKey, Header, encode};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-
 use crate::middleware::auth::auth_middleware;
 use crate::models::refresh_token::RefreshToken;
+use crate::models::user::UserResponse;
+use crate::state::AppState;
+use crate::tokens::{RefreshClaims, decode_refresh_token};
 use crate::tokens::{issue_tokens, refresh_access_token};
 use axum::extract::ConnectInfo;
 use axum::http::header::USER_AGENT;
+use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use axum::{Extension, Json, Router, extract::State, middleware, routing::post};
+use axum_extra::extract::CookieJar;
 use chrono::TimeZone;
+use jsonwebtoken::{DecodingKey, Validation, decode};
+use jsonwebtoken::{EncodingKey, Header, encode};
 use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::env;
 use std::net::SocketAddr;
+use std::sync::OnceLock;
 
 static SECRET: OnceCell<Vec<u8>> = OnceCell::new();
 
@@ -38,6 +39,94 @@ struct RegistrationRequest {
     password: String,
 }
 
+fn is_strong_password(p: &str) -> bool {
+    if p.len() < 8 {
+        return false;
+    }
+
+    let mut has_upper = false;
+    let mut has_lower = false;
+    let mut has_digit = false;
+    let mut has_special = false;
+
+    for c in p.chars() {
+        if c.is_uppercase() {
+            has_upper = true;
+        } else if c.is_lowercase() {
+            has_lower = true;
+        } else if c.is_ascii_digit() {
+            has_digit = true;
+        } else if "#?!@$%^&*-".contains(c) {
+            has_special = true;
+        }
+
+        // Оптимизация: если всё уже нашли, можно выходить из цикла раньше
+        if has_upper && has_lower && has_digit && has_special {
+            break;
+        }
+    }
+
+    has_upper && has_lower && has_digit && has_special
+}
+
+fn is_valid_username(s: &str) -> bool {
+    let s_len = s.len(); // добавил ;
+    s.chars().all(|c| {
+        matches!(c,
+            'a'..='z' |
+            'A'..='Z' |
+            '0'..='9' |
+            '_' | '-'
+        )
+    }) && s_len >= 3
+        && s_len <= 32 // обычно границы 3 и 32 включают
+}
+
+static BANNED_USERNAMES: &[&str] = &[
+    "admin",
+    "administrator",
+    "root",
+    "system",
+    "nixm",
+    "official",
+    "support",
+    "moderator",
+    "mod",
+    "staff",
+    "dev",
+    "developer",
+    "security",
+    "bot",
+    "owner",
+    "creator",
+    "founder",
+    "nixm_owner",
+    "nixm_admin",
+    "nixm_staff",
+    "nixm_support",
+    "nixm_official",
+    "nixm_dev",
+    "nixm_bot",
+    "api",
+    "auth",
+    "login",
+    "signup",
+    "register",
+    "null",
+    "undefined",
+    "index",
+    "home",
+    "settings",
+    "config",
+    "profile",
+    "user",
+    "guest",
+    "verified",
+    "check",
+    "confirmed",
+    "service",
+];
+
 async fn sign_up(
     State(state): State<AppState>,
     Json(body): Json<RegistrationRequest>,
@@ -45,7 +134,23 @@ async fn sign_up(
     let username = body.username;
     let password = body.password;
 
-    // 1. Проверка существования
+    if (!is_valid_username(&&*username)) {
+        return (
+            StatusCode::BAD_REQUEST,
+            "Username should contains only latin letters, digits, underscore and minus.",
+        )
+            .into_response();
+    }
+
+    if (BANNED_USERNAMES.contains(&&*username)) {
+        return (StatusCode::BAD_REQUEST, "Username is not allowed.").into_response();
+    }
+
+    if !is_strong_password(&password) {
+        return (StatusCode::BAD_REQUEST, "Invalid password policy").into_response();
+    }
+
+    // 2. Проверка существования юзера
     let existing_user = match db::users::find_by_username(&state.pool, &username).await {
         Ok(user) => user,
         Err(e) => {
@@ -58,7 +163,7 @@ async fn sign_up(
         return (StatusCode::CONFLICT, "Username taken").into_response();
     }
 
-    // 2. Хэширование
+    // 3. Хэширование
     let hash = match bcrypt::hash(&password, bcrypt::DEFAULT_COST) {
         Ok(h) => h,
         Err(e) => {
@@ -67,16 +172,20 @@ async fn sign_up(
         }
     };
 
-    // 3. Создание пользователя
-    match db::users::create_user(&state.pool, &username, &hash).await {
-        Ok(_) => (),
+    // 4. Создание пользователя
+    let uid = match db::users::create_user(&state.pool, &username, &hash).await {
+        Ok(uid) => uid,
         Err(e) => {
             eprintln!("DB Error (create): {:?}", e); // <-- Вот тут ты увидишь реальную ошибку
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
-    }
+    };
 
-    StatusCode::CREATED.into_response()
+    (
+        StatusCode::CREATED,
+        Json(json!({ "id": uid, "status": "success" })),
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -106,13 +215,14 @@ async fn sign_in(
     };
 
     // 2. Проверка пароля
-    let verified = match bcrypt::verify(&body.password, &user.password_hash) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("Bcrypt error: {:?}", e);
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    };
+    let verified =
+        match bcrypt::verify(&body.password, &user.password_hash.unwrap_or(String::new())) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("Bcrypt error: {:?}", e);
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        };
 
     if !verified {
         return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response();
@@ -166,7 +276,7 @@ async fn sign_in(
 
     // 7. Формирование куки
     let cookie_str = format!(
-        "refresh_token={}; HttpOnly; SameSite=Lax; Path=/api/auth/refresh; Max-Age=604800",
+        "refresh_token={}; HttpOnly; Path=/; Max-Age=604800",
         token_pair.refresh_token
     );
 
@@ -184,10 +294,6 @@ async fn sign_in(
         Json(json!({
             "access_token": token_pair.access_token,
             "expires_in": token_pair.expires_in,
-            "user": {
-                "id": user.id,
-                "username": user.username
-            }
         })),
     )
         .into_response()
@@ -213,7 +319,7 @@ async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoRespo
         let _ = db::refresh_tokens::revoke(&state.pool, user_id, jti).await;
     }
 
-    let cookie = "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/api/auth/refresh; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    let cookie = "refresh_token=; HttpOnly; Path=/api/auth/refresh; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
     (
         StatusCode::OK,
@@ -226,8 +332,12 @@ async fn me(
     State(state): State<AppState>,
     Extension(user_id): Extension<String>,
 ) -> impl IntoResponse {
-    println!("called me");
-    let user = match db::users::find_by_id(&state.pool, &user_id).await {
+    let uid: i64 = match user_id.parse() {
+        Ok(id) => id,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    let user = match db::users::find_by_id(&state.pool, uid).await {
         Ok(user) => user,
         Err(e) => {
             eprintln!("DB Error finding user: {:?}", e);
@@ -240,16 +350,9 @@ async fn me(
         None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
     };
 
-    (
-        StatusCode::OK,
-        Json(json!({
-            "user": {
-                "id": user.id,
-                "username": user.username
-            }
-        })),
-    )
-        .into_response()
+    let response_data = UserResponse::from(user);
+
+    (StatusCode::OK, Json(json!(response_data))).into_response()
 }
 
 pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> Response {
@@ -320,7 +423,7 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
             }
 
             let cookie = format!(
-                "refresh_token={}; HttpOnly; SameSite=Lax; Path=/api/auth/refresh; Max-Age=604800",
+                "refresh_token={}; HttpOnly; Path=/; Max-Age=604800",
                 pair.refresh_token
             );
             (

@@ -13,6 +13,7 @@ import { getPrivateKey } from '@/lib/db/keys';
 import { PublicKeyRecord } from '@/models/publicKeysRecord';
 import { api } from '@/lib/api/api';
 import { NixmCrypto } from '@/lib/crypto';
+import { useAuth } from '@/hooks/AuthContext';
 
 type EncryptedPayload = {
   iv: string;
@@ -45,6 +46,7 @@ type CryptoContextType = {
 const CryptoContext = createContext<CryptoContextType | null>(null);
 
 export function CryptoContextProvider({ children }: { children: ReactNode }) {
+  const { me } = useAuth();
   const [myPrivateKeyBase64, setMyPrivateKeyBase64] = useState<string | null>(
     null,
   );
@@ -160,8 +162,10 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
+      if (!me) return;
+
       if (myPrivateKeyBase64 === null) {
-        const key = await getPrivateKey();
+        const key = await getPrivateKey(me.id);
 
         if (key === null) {
           console.error('Cannot get user private key');

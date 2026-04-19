@@ -2,10 +2,12 @@ import { Chat } from '@/pages/Dashboard/typing/definitions';
 import { useState } from 'react';
 import { SearchBar } from '@/pages/Dashboard/components/SearchBar';
 import { ChatItem } from '@/pages/Dashboard/components/ChatItem';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/AuthContext';
 import { FaGear } from 'react-icons/fa6';
-import { Settings } from './Settings';
+import { Settings } from './Settings/Settings';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useNotifications } from '@/hooks/NotificationContext';
+import { NotificationsPanel } from '@/pages/Dashboard/components/NotificationsPanel';
 
 export const Sidebar = ({
   chats,
@@ -14,13 +16,14 @@ export const Sidebar = ({
 }: {
   chats: Chat[];
   activeId: string | null;
-  onSelect: (userId: string) => void;
+  onSelect: (userId: string, username: string) => void;
 }) => {
   const [query, setQuery] = useState('');
   const filtered = query.trim()
     ? chats.filter(c => c.username.toLowerCase().includes(query.toLowerCase()))
     : chats;
-
+  const { notifications } = useNotifications();
+  const [showNotifications, setShowNotifications] = useState(false);
   const { me } = useAuth();
   const [openSettings, setOpenSettings] = useState(false);
 
@@ -37,7 +40,6 @@ export const Sidebar = ({
         </div>
         <SearchBar value={query} onChange={setQuery} />
       </div>
-
       <div className='flex-1 overflow-y-auto p-2 space-y-0.5'>
         {filtered.length > 0 ? (
           filtered.map(chat => (
@@ -45,7 +47,7 @@ export const Sidebar = ({
               key={chat.userId}
               chat={chat}
               active={chat.userId === activeId}
-              onClick={() => onSelect(chat.userId)}
+              onClick={() => onSelect(chat.userId, chat.username)}
             />
           ))
         ) : (
@@ -54,27 +56,47 @@ export const Sidebar = ({
           </p>
         )}
       </div>
-
       <div className='p-3 border-t border-border'>
-        <div className='flex items-center gap-2'>
-          <Avatar className='w-6 h-6'>
-            <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono'>
-              {me?.username?.[0]?.toUpperCase() ?? '?'}
-            </AvatarFallback>
-          </Avatar>
-          <span className='text-xs font-mono text-muted-foreground'>
-            {me?.username ?? 'unknown'}
-          </span>
-          <button
-            onClick={() => setOpenSettings(true)}
-            className='ml-auto p-1 hover:bg-muted rounded-md transition-colors'
-            title='Open settings'
-          >
-            <FaGear size={16} />
-          </button>
+        <div className='relative'>
+          {showNotifications && (
+            <NotificationsPanel onClose={() => setShowNotifications(false)} />
+          )}
+          <div className='flex items-center gap-2'>
+            <Avatar className='w-6 h-6'>
+              <AvatarImage
+                src={`http://localhost:5900${me?.avatar_url}`}
+                alt={me?.username}
+                className='object-cover rounded-full'
+              />
+              <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono'>
+                {me?.username?.[0]?.toUpperCase() ?? '?'}
+              </AvatarFallback>
+            </Avatar>
+            <span className='text-xs font-mono text-muted-foreground'>
+              {me?.username ?? 'unknown'}
+            </span>
+            <div className='ml-auto flex items-center gap-1'>
+              <button
+                onClick={() => setShowNotifications(v => !v)}
+                className='relative p-1 hover:bg-muted rounded-md transition-colors'
+              >
+                <span className='text-xs'>🔔</span>
+                {notifications.length > 0 && (
+                  <span className='absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full text-[8px] font-mono text-white flex items-center justify-center'>
+                    {notifications.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setOpenSettings(true)}
+                className='p-1 hover:bg-muted rounded-md transition-colors'
+              >
+                <FaGear size={16} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-
       <Settings open={openSettings} onClose={() => setOpenSettings(false)} />
     </aside>
   );

@@ -3,6 +3,9 @@ import { encode, decode } from '@msgpack/msgpack';
 export const MSG_AUTH = 0;
 export const MSG_DATA = 1;
 export const MSG_KEEPALIVE = 2;
+export const MSG_CHAT_REQUEST = 3;
+export const MSG_CHAT_ACCEPTED = 4;
+export const MSG_CHAT_DECLINED = 5;
 
 type MessagePayload = {
   device_id: string;
@@ -15,23 +18,34 @@ export type OutgoingMessage =
   | { type: typeof MSG_KEEPALIVE; payload: 'PING' }
   | {
       type: typeof MSG_DATA;
-      to: number;
+      to: bigint;
       messageId: string;
       timestamp: number;
       payloads: MessagePayload[];
-    };
+    }
+  | { type: typeof MSG_CHAT_REQUEST; to: number }
+  | { type: typeof MSG_CHAT_ACCEPTED; to: number }
+  | { type: typeof MSG_CHAT_DECLINED; to: number };
 
 export type IncomingMessage =
   | { type: typeof MSG_AUTH; payload: 'ACK' | 'ERR' }
   | { type: typeof MSG_KEEPALIVE; payload: 'PONG' }
   | {
       type: typeof MSG_DATA;
-      from: number;
+      from: bigint;
       messageId: string;
       timestamp: number;
       iv: Uint8Array;
       ciphertext: Uint8Array;
-    };
+    }
+  | {
+      type: typeof MSG_CHAT_REQUEST;
+      from: number;
+      username: string;
+      avatar_url: string | null;
+    }
+  | { type: typeof MSG_CHAT_ACCEPTED; from: number }
+  | { type: typeof MSG_CHAT_DECLINED; from: number };
 
 // ─── Encode ──────────────────────────────────────────────────────────────────
 
@@ -63,10 +77,7 @@ export function encodePacket(msg: OutgoingMessage): Uint8Array {
 
       buf[0] = MSG_DATA;
 
-      const hi = Math.floor(msg.to / 0x1_0000_0000);
-      const lo = msg.to >>> 0;
-      view.setUint32(1, hi, false);
-      view.setUint32(5, lo, false);
+      view.setBigInt64(1, msg.to, false);
 
       const tsHi = Math.floor(msg.timestamp / 0x1_0000_0000);
       const tsLo = msg.timestamp >>> 0;
@@ -76,6 +87,19 @@ export function encodePacket(msg: OutgoingMessage): Uint8Array {
       buf.set(messageIdBytes, 17);
       buf.set(packedPayloads, 53);
 
+      return buf;
+    }
+
+    case MSG_CHAT_REQUEST:
+    case MSG_CHAT_ACCEPTED:
+    case MSG_CHAT_DECLINED: {
+      const buf = new Uint8Array(9);
+      const view = new DataView(buf.buffer);
+      buf[0] = msg.type;
+      const hi = Math.floor(msg.to / 0x1_0000_0000);
+      const lo = msg.to >>> 0;
+      view.setUint32(1, hi, false);
+      view.setUint32(5, lo, false);
       return buf;
     }
   }
@@ -112,9 +136,7 @@ export function decodePacket(data: Uint8Array): IncomingMessage | null {
 
         const view = new DataView(data.buffer, data.byteOffset);
 
-        const fromHi = view.getUint32(1, false);
-        const fromLo = view.getUint32(5, false);
-        const from = fromHi * 0x1_0000_0000 + fromLo;
+        const from = view.getBigInt64(1, false);
 
         const tsHi = view.getUint32(9, false);
         const tsLo = view.getUint32(13, false);
@@ -126,6 +148,27 @@ export function decodePacket(data: Uint8Array): IncomingMessage | null {
         const ciphertext = data.slice(65);
 
         return { type: MSG_DATA, from, timestamp, messageId, iv, ciphertext };
+      }
+
+      case MSG_CHAT_REQUEST: {
+        const payload = decode(data.subarray(1)) as {
+          from: number;
+          username: string;
+          avatar_url: string | null;
+        };
+        return { type: MSG_CHAT_REQUEST, ...payload };
+      }
+
+      case MSG_CHAT_ACCEPTED:
+      case MSG_CHAT_DECLINED: {
+        const view = new DataView(data.buffer, data.byteOffset);
+        const hi = view.getUint32(1, false);
+        const lo = view.getUint32(5, false);
+        const from = hi * 0x1_0000_0000 + lo;
+        return {
+          type: type as typeof MSG_CHAT_ACCEPTED | typeof MSG_CHAT_DECLINED,
+          from,
+        };
       }
 
       default:

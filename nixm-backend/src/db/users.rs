@@ -9,18 +9,16 @@ struct UserId {
 
 pub async fn find_by_username(pool: &PgPool, username: &str) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, created_at FROM users WHERE username = $1",
+        "SELECT id, username, password_hash, created_at, bio, avatar_url FROM users WHERE username = $1"
     )
     .bind(username)
     .fetch_optional(pool)
     .await
 }
 
-pub async fn find_by_id(pool: &PgPool, id: &str) -> Result<Option<User>, sqlx::Error> {
-    let id: i64 = id.parse().unwrap();
-
+pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, created_at FROM users WHERE id = $1",
+        "SELECT id, username, password_hash, created_at, bio, avatar_url FROM users WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -42,4 +40,26 @@ pub async fn create_user(
     .await?;
 
     Ok(user_id.id)
+}
+
+pub async fn change_avatar(
+    pool: &PgPool,
+    user_id: i64,
+    avatar_url: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        "UPDATE users SET avatar_url = $1 WHERE id = $2",
+        avatar_url,
+        user_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn change_bio(pool: &PgPool, user_id: i64, bio: &str) -> Result<(), sqlx::Error> {
+    sqlx::query!("UPDATE users SET bio = $1 WHERE id = $2", bio, user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }

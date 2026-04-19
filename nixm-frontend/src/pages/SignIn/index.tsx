@@ -4,14 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/AuthContext';
-import { generateAndSaveKeys, getPublicData, hasKeys } from '@/lib/crypto';
+import { api, ApiError } from '@/lib/api/api';
 
 const SignIn = () => {
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { interceptor } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -20,33 +19,15 @@ const SignIn = () => {
 
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
-
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Invalid username of password');
-        } else if (response.status === 500) {
-          throw new Error('Internal server error. Try again later');
-        } else {
-          throw new Error(`Error: ${response.status}`);
-        }
-      }
-
-      console.log('Logged successfully');
-
-      const { access_token } = await response.json();
-      login(access_token);
+      const resp = await api.auth.login(
+        data as { username: string; password: string },
+      );
+      login(resp.access_token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      if (err instanceof ApiError) {
+        setError(err.toString());
+      }
     } finally {
       setIsLoading(false);
     }

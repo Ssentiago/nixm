@@ -29,6 +29,7 @@ class WebSocketService {
   private ws: WebSocket | null = null;
   private status: WSStatus = 'disconnected';
   private getToken: () => string | null = () => null;
+  private getMyDeviceId: () => string | null = () => null;
   private reconnectAttempts: number = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -54,8 +55,8 @@ class WebSocketService {
   }
 
   connect(getToken: () => string | null, getMyDeviceId: () => string | null) {
-    this.getToken = getToken; // всегда обновляем — чтобы реконнект брал свежий токен
-    this.getMyDeviceId = getMyDeviceId();
+    this.getToken = getToken;
+    this.getMyDeviceId = getMyDeviceId;
     if (
       this.ws?.readyState === WebSocket.OPEN ||
       this.ws?.readyState === WebSocket.CONNECTING
@@ -95,16 +96,24 @@ class WebSocketService {
   }
 
   // ─── Handlers ────────────────────────────────────────────────────────────
-
   private handleOpen() {
     const token = this.getToken();
     if (!token) {
       this.ws?.close(4002, 'No token');
       return;
     }
+    const deviceId = this.getMyDeviceId();
+    if (!deviceId) {
+      this.ws?.close(4002, 'No device id');
+      return;
+    }
 
     this.setStatus('connected');
-    this.send({ type: MSG_AUTH, payload: token, deviceId: myDeviceId });
+    this.send({
+      type: MSG_AUTH,
+      payload: token,
+      deviceId: deviceId,
+    });
 
     // Таймаут на ACK
     this.authTimer = setTimeout(() => {
@@ -215,7 +224,7 @@ class WebSocketService {
     this.reconnectTimer = setTimeout(() => {
       const token = this.getToken();
       if (!token) return; // токен протух и не обновился — не реконнектимся
-      this.connect(this.getToken);
+      this.connect(this.getToken, this.getMyDeviceId);
     }, delay);
   }
 
@@ -241,7 +250,7 @@ class WebSocketService {
   }
 }
 
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://localhost:5900/ws`;
 
 export const ws = new WebSocketService(WS_URL, {
   reconnectDelay: 1_000,

@@ -7,8 +7,8 @@ CREATE TABLE user_invite_links
 
     type       VARCHAR(10)        NOT NULL CHECK (type IN ('one-time', 'timed')),
 
-    expires_at TIMESTAMPTZ,                               -- NULL = никогда не истекает (для one-time)
-    used       BOOLEAN            NOT NULL DEFAULT false, -- для one-time
+    expires_at TIMESTAMPTZ,
+    use_count  INTEGER                     DEFAULT 0,
 
     revoked    BOOLEAN            NOT NULL DEFAULT false,
     revoked_at TIMESTAMPTZ,

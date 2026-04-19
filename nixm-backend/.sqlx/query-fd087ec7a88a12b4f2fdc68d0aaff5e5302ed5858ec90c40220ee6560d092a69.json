@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE message_payloads\n        SET delivered = TRUE, delivered_at = NOW()\n        WHERE id = ANY($1)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fd087ec7a88a12b4f2fdc68d0aaff5e5302ed5858ec90c40220ee6560d092a69"
+}

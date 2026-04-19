@@ -10,6 +10,9 @@ import ProtectedRoute from '@/components/routing/ProtectedRoute';
 import PublicRoute from '@/components/routing/PublicRoute';
 import Dashboard from '@/pages/Dashboard/Dashboard';
 import KeysGuard from '@/components/routing/KeyGuard';
+import { CryptoContextProvider } from '@/hooks/CryptoContext';
+import { ChatContextProvider } from '@/hooks/ChatContext';
+import { NotificationsProvider } from '@/hooks/NotificationContext';
 const App = () => {
   return (
     <AppProvider>
@@ -46,7 +49,13 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <KeysGuard>
-                      <Dashboard />
+                      <CryptoContextProvider>
+                        <NotificationsProvider>
+                          <ChatContextProvider>
+                            <Dashboard />
+                          </ChatContextProvider>
+                        </NotificationsProvider>
+                      </CryptoContextProvider>
                     </KeysGuard>
                   </ProtectedRoute>
                 }

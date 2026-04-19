@@ -2,6 +2,7 @@ import { initializeDevice } from '../crypto';
 
 const DB_NAME = 'nixm_keys';
 const STORE_NAME = 'keys';
+const keyId = (userId: string) => `user_key_${userId}`;
 
 function openDB(): Promise<IDBDatabase> {
   console.log('[IDB] openDB → opening', DB_NAME);
@@ -34,100 +35,53 @@ function openDB(): Promise<IDBDatabase> {
 
 // ==================== MAIN FUNCTIONS ====================
 
-export async function generateAndSaveKeys(): Promise<void> {
+export async function generateAndSaveKeys(userId: string): Promise<{
+  publicKey: string;
+  deviceId: string;
+}> {
   const initialized = await initializeDevice();
-
   const db = await openDB();
   const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-
-  store.put({
-    id: 'current_user_key',
+  tx.objectStore(STORE_NAME).put({
+    id: keyId(userId),
     privateKey: initialized.privateKey,
     publicKey: initialized.publicKey,
     deviceId: initialized.deviceId,
   });
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => {
-        console.log(
-          '[Keys] generateAndSaveKeys → saved to IndexedDB successfully',
-        );
-        resolve();
-      };
-      tx.onerror = () => {
-        console.error(
-          '[Keys] generateAndSaveKeys → transaction error',
-          tx.error,
-        );
-        reject(tx.error);
-      };
-    });
-  } catch (err) {
-    console.error('[Keys] generateAndSaveKeys → CRITICAL ERROR', err);
-    throw err;
-  }
+  await new Promise<void>((res, rej) => {
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+  return { publicKey: initialized.publicKey, deviceId: initialized.deviceId };
 }
 
-export async function getPrivateKey(): Promise<string | null> {
-  console.log('[Keys] getPrivateKey → started');
-  try {
-    const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-
-    return new Promise((resolve, reject) => {
-      const request = store.get('current_user_key');
-      request.onsuccess = () => {
-        const result = request.result?.privateKey || null;
-        console.log('[Keys] getPrivateKey →', result ? 'found' : 'not found');
-        resolve(result);
-      };
-      request.onerror = () => {
-        console.error('[Keys] getPrivateKey → error', request.error);
-        reject(request.error);
-      };
-    });
-  } catch (err) {
-    console.error('[Keys] getPrivateKey → failed', err);
-    throw err;
-  }
+export async function getPrivateKey(userId: string): Promise<string | null> {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  const req = tx.objectStore(STORE_NAME).get(keyId(userId));
+  return new Promise((res, rej) => {
+    req.onsuccess = () => res(req.result?.privateKey ?? null);
+    req.onerror = () => rej(req.error);
+  });
 }
-
-export async function getPublicData(): Promise<{
+export async function getPublicData(userId: string): Promise<{
   publicKey: string;
   deviceId: string;
 } | null> {
-  console.log('[Keys] getPublicData → started');
-  try {
-    const db = await openDB();
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-
-    return new Promise((resolve, reject) => {
-      const req = store.get('current_user_key');
-      req.onsuccess = () => {
-        const data = req.result
-          ? { publicKey: req.result.publicKey, deviceId: req.result.deviceId }
-          : null;
-        console.log('[Keys] getPublicData →', data ? 'found' : 'not found');
-        resolve(data);
-      };
-      req.onerror = () => {
-        console.error('[Keys] getPublicData → error', req.error);
-        reject(req.error);
-      };
-    });
-  } catch (err) {
-    console.error('[Keys] getPublicData → failed', err);
-    throw err;
-  }
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  const req = tx.objectStore(STORE_NAME).get(keyId(userId));
+  return new Promise((res, rej) => {
+    req.onsuccess = () => {
+      const r = req.result;
+      res(r ? { publicKey: r.publicKey, deviceId: r.deviceId } : null);
+    };
+    req.onerror = () => rej(req.error);
+  });
 }
 
-export async function hasKeys(): Promise<boolean> {
-  console.log('[Keys] hasKeys → checking');
-  const has = await getPrivateKey().then(k => k !== null);
-  console.log('[Keys] hasKeys → result:', has);
-  return has;
+export async function hasKeys(userId: string): Promise<boolean> {
+  const data = await getPublicData(userId);
+  const privateKey = await getPrivateKey(userId);
+  return !!(data?.publicKey && data?.deviceId && privateKey);
 }

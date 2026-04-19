@@ -2,21 +2,27 @@ mod api;
 pub mod db;
 pub mod middleware;
 pub mod models;
+pub mod remove_dead_connections;
 pub mod state;
 pub mod tokens;
-use crate::api::{auth, invite_links, keys, user, ws};
+
+use crate::api::{auth, invite_links, keys, messages, users, ws};
 use crate::state::AppState;
+use axum::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE, SET_COOKIE};
+use axum::http::{HeaderValue, Method, header};
 use axum::{Router, ServiceExt, routing::get};
 use sqlx::PgPool;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::env;
 use std::env::VarError;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tracing_subscriber;
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -38,32 +44,21 @@ async fn main() {
     let state = AppState {
         pool,
         connections: Arc::new(RwLock::new(HashMap::new())),
+        expiry_index: Arc::new(RwLock::new(BTreeSet::new())),
     };
 
     let cleanup_state = state.clone();
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    tokio::spawn(async move { remove_dead_connections::main(cleanup_state).await });
 
-            let now = Instant::now();
-            let mut connections = cleanup_state.connections.write().await;
-
-            connections.retain(|user_id, ws| {
-                let alive = now.duration_since(ws.last_keepalive).as_secs() < 90;
-                if !alive {
-                    println!("removing dead connection: user_id={user_id}");
-                }
-                alive
-            });
-        }
-    });
+    let cors = CorsLayer::very_permissive();
 
     let backend_port = std::env::var("BACKEND_PORT").unwrap_or("3000".to_string());
     let mut app = Router::new()
         .nest("/api/auth", auth::router())
-        .nest("/api/user", user::router())
         .nest("/api/keys", keys::router())
-        .nest("/api/invite_links", invite_links::router())
+        .nest("/api/invites", invite_links::router())
+        .nest("/api/users", users::router())
+        .nest("/api/messages", messages::router())
         .route("/ws", get(ws::ws_handler))
         .with_state(state);
 
@@ -73,12 +68,16 @@ async fn main() {
                 "LAUNCHING AT THE DEV ENVIRONMENT. USING ASSETS AT: {}",
                 dev_frontend_dir
             );
-            app = app.fallback_service(
-                ServeDir::new(&dev_frontend_dir)
-                    .fallback(ServeFile::new(format!("{}/index.html", dev_frontend_dir))),
-            )
+            app = app
+                .fallback_service(
+                    ServeDir::new(&dev_frontend_dir)
+                        .fallback(ServeFile::new(format!("{}/index.html", dev_frontend_dir))),
+                )
+                .nest_service("/avatars", ServeDir::new("./avatars"))
+                .layer(cors)
         }
         false => {
+            app = app.nest_service("/avatars", ServeDir::new("./avatars"));
             println!("LAUNCHING AT THE PRODUCTION ENVIRONMENT. USE NGINX FOR ASSETS RESOLVING...")
         }
     }

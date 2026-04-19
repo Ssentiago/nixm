@@ -14,11 +14,13 @@ export type StoredMessage = {
   messageId: string;
   from: string;
   to: string;
+  peerId: string; // добавь
   direction: 'sent' | 'received';
-  ciphertext: string; // Base64
-  iv: string; // Base64
-  timestamp: number; // ms, от сервера
+  ciphertext: string;
+  iv: string;
+  timestamp: number;
   status: MessageStatus;
+  system?: boolean;
 };
 
 // ─── DB open ─────────────────────────────────────────────────────────────────
@@ -29,10 +31,10 @@ function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(DB_NAME, 2); // было 1
 
     request.onerror = () => {
-      dbPromise = null; // сбрасываем кеш чтобы можно было повторить
+      dbPromise = null;
       reject(request.error);
     };
 
@@ -41,20 +43,15 @@ function openDB(): Promise<IDBDatabase> {
     request.onupgradeneeded = event => {
       const db = (event.target as IDBOpenDBRequest).result;
 
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, {
-          keyPath: 'messageId',
-        });
-
-        // Индекс для выборки по собеседнику + сортировки по времени
-        // loadMessages(userId, limit, before) использует именно его
-        store.createIndex('by_peer_time', ['from', 'timestamp'], {
-          unique: false,
-        });
-
-        // Быстрая проверка exists()
-        store.createIndex('by_messageId', 'messageId', { unique: true });
+      if (db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME); // сносим старый
       }
+
+      const store = db.createObjectStore(STORE_NAME, { keyPath: 'messageId' });
+      store.createIndex('by_peer_time', ['peerId', 'timestamp'], {
+        unique: false,
+      });
+      store.createIndex('by_messageId', 'messageId', { unique: true });
     };
   });
 
@@ -152,4 +149,25 @@ export async function exists(messageId: string): Promise<boolean> {
   const index = tx.objectStore(STORE_NAME).index('by_messageId');
   const key = await promisifyRequest(index.getKey(messageId));
   return key !== undefined;
+}
+
+export async function getAllPeerIds(): Promise<
+  { peerId: string; lastTimestamp: number }[]
+> {
+  const db = await openDB();
+  const tx = db.transaction('messages', 'readonly');
+  const store = tx.objectStore('messages');
+  const all = await promisifyRequest(store.getAll());
+
+  const map = new Map<string, number>();
+  for (const msg of all) {
+    const peerId = msg.direction === 'sent' ? msg.to : msg.from;
+    const prev = map.get(peerId) ?? 0;
+    if (msg.timestamp > prev) map.set(peerId, msg.timestamp);
+  }
+
+  return Array.from(map.entries()).map(([peerId, lastTimestamp]) => ({
+    peerId,
+    lastTimestamp,
+  }));
 }
