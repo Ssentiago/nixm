@@ -13,35 +13,39 @@ export const ChatItem = ({
 }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors ${
-      active ? 'bg-secondary' : 'hover:bg-muted'
+    className={`w-full flex items-center gap-3 px-3 py-3 rounded-sm text-left transition-colors ${
+      active
+        ? 'bg-accent border-l-2 border-l-foreground'
+        : 'hover:bg-accent/50 border-l-2 border-l-transparent'
     }`}
   >
-    <Avatar className='w-8 h-8 shrink-0'>
-      <AvatarFallback className='bg-secondary text-muted-foreground text-xs font-mono'>
+    <Avatar className='w-10 h-10 shrink-0'>
+      <AvatarFallback className='bg-muted border border-border text-foreground text-sm font-mono'>
         {chat.username[0].toUpperCase()}
       </AvatarFallback>
     </Avatar>
     <div className='flex-1 min-w-0'>
       <div className='flex items-center justify-between'>
-        <span className='text-xs font-mono text-foreground truncate'>
+        <span
+          className={`text-sm font-mono truncate ${active ? 'text-foreground' : 'text-foreground/80'}`}
+        >
           {chat.username}
         </span>
-        <span className='text-[10px] text-muted-foreground/60 ml-2 shrink-0'>
+        <span className='text-xs text-muted-foreground ml-2 shrink-0'>
           {new Date(chat.lastActivity).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           })}
         </span>
       </div>
-      <p className='text-[11px] text-muted-foreground/60 truncate mt-0.5'>
+      <p className='text-xs text-muted-foreground truncate mt-0.5'>
         {chat.lastMessage}
       </p>
     </div>
     {chat.unreadCount > 0 && (
-      <Badge className='bg-secondary text-foreground text-[10px] px-1.5 py-0 font-mono shrink-0'>
+      <span className='bg-foreground text-background text-[10px] px-1.5 py-0.5 font-mono shrink-0 rounded-sm'>
         {chat.unreadCount}
-      </Badge>
+      </span>
     )}
   </button>
 );

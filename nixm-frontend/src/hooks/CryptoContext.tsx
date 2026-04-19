@@ -1,7 +1,6 @@
 import {
   createContext,
   ReactNode,
-  SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -10,7 +9,6 @@ import {
   useState,
 } from 'react';
 import { getPrivateKey } from '@/lib/db/keys';
-import { PublicKeyRecord } from '@/models/publicKeysRecord';
 import { api } from '@/lib/api/api';
 import { NixmCrypto } from '@/lib/crypto';
 import { useAuth } from '@/hooks/AuthContext';
@@ -20,25 +18,27 @@ type EncryptedPayload = {
   data: string;
 };
 
-type UserID = string; // i64
+type PeerID = string;
 
-type DeviceID = string; // UUID (36 characters)
+type PeerDeviceID = string; // UUID (36 characters)
 
-type PublicKeyBase64 = string;
+type PeerPublicKeyBase64 = string;
 
-type PublicKeysCache = Record<UserID, Map<DeviceID, PublicKeyBase64>>;
+type PeersPublicKeysCache = Record<
+  PeerID,
+  Map<PeerDeviceID, PeerPublicKeyBase64>
+>;
 
 type CryptoContextType = {
   isReady: boolean;
 
-  // Низкоуровневые примитивы (много устройств)
   encryptMessage: (
-    userId: UserID,
+    peerId: PeerID,
     text: string,
   ) => Promise<{ deviceId: string; encryptedPayload: EncryptedPayload }[]>;
   decryptMessage: (
-    userId: UserID,
-    deviceId: DeviceID,
+    peerId: PeerID,
+    peerDeviceId: PeerDeviceID,
     payload: EncryptedPayload,
   ) => Promise<string>;
 };
@@ -51,43 +51,43 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
     null,
   );
 
-  const publicKeysCache = useRef<PublicKeysCache>({});
-  const cryptoServiceCache = useRef<Map<UserID, Map<DeviceID, NixmCrypto>>>(
-    new Map(),
-  );
+  const peersPublicKeysCache = useRef<PeersPublicKeysCache>({});
+  const peersCryptoServiceCache = useRef<
+    Map<PeerID, Map<PeerDeviceID, NixmCrypto>>
+  >(new Map());
 
   const ensurePublicKeysLoaded = useCallback(
-    async (userId: UserID) => {
+    async (peerId: PeerID) => {
       if (!myPrivateKeyBase64) throw new Error('Private key not loaded');
 
-      if (publicKeysCache.current[userId]) {
-        return publicKeysCache.current[userId];
+      if (peersPublicKeysCache.current[peerId]) {
+        return peersPublicKeysCache.current[peerId];
       }
 
-      const records = await api.keys.keysFor(userId);
+      const records = await api.keys.keysFor(peerId);
 
-      const deviceMap = new Map<DeviceID, PublicKeyBase64>();
+      const deviceMap = new Map<PeerDeviceID, PeerPublicKeyBase64>();
       for (const rec of records) {
         deviceMap.set(rec.device_id, rec.public_key);
       }
 
-      publicKeysCache.current[userId] = deviceMap;
+      peersPublicKeysCache.current[peerId] = deviceMap;
       return deviceMap;
     },
     [myPrivateKeyBase64],
   );
 
   const ensureCryptoServicesLoaded = useCallback(
-    async (userID: UserID) => {
+    async (peerUserID: PeerID) => {
       if (!myPrivateKeyBase64) throw new Error('Private key not loaded');
 
-      if (cryptoServiceCache.current.has(userID)) {
-        return cryptoServiceCache.current.get(userID)!;
+      if (peersCryptoServiceCache.current.has(peerUserID)) {
+        return peersCryptoServiceCache.current.get(peerUserID)!;
       }
 
-      const publicKeysMap = await ensurePublicKeysLoaded(userID);
+      const publicKeysMap = await ensurePublicKeysLoaded(peerUserID);
 
-      const servicesMap = new Map<DeviceID, NixmCrypto>();
+      const servicesMap = new Map<PeerDeviceID, NixmCrypto>();
 
       const tasks: Array<Promise<{ deviceId: string; service: NixmCrypto }>> =
         Array.from(publicKeysMap.entries()).map(
@@ -104,7 +104,7 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
         servicesMap.set(deviceId, service);
       }
 
-      cryptoServiceCache.current.set(userID, servicesMap);
+      peersCryptoServiceCache.current.set(peerUserID, servicesMap);
 
       return servicesMap;
     },
@@ -113,7 +113,7 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
 
   const encryptMessage = useCallback(
     async (
-      userId: UserID,
+      userId: PeerID,
       text: string,
     ): Promise<{ deviceId: string; encryptedPayload: EncryptedPayload }[]> => {
       if (!myPrivateKeyBase64) {
@@ -140,7 +140,7 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
 
   const decryptMessage = useCallback(
     async (
-      userId: UserID,
+      userId: PeerID,
       deviceId: string,
       encryptedPayload: EncryptedPayload,
     ) => {

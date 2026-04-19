@@ -1,176 +1,168 @@
 import { encode, decode } from '@msgpack/msgpack';
+import {
+  IncomingMessage,
+  MSG_AUTH,
+  MSG_CHAT_ACCEPTED,
+  MSG_CHAT_DECLINED,
+  MSG_CHAT_REQUEST,
+  MSG_DATA,
+  MSG_KEEPALIVE,
+  OutgoingMessage,
+} from '@/lib/websocket/typing/definitions';
 
-export const MSG_AUTH = 0;
-export const MSG_DATA = 1;
-export const MSG_KEEPALIVE = 2;
-export const MSG_CHAT_REQUEST = 3;
-export const MSG_CHAT_ACCEPTED = 4;
-export const MSG_CHAT_DECLINED = 5;
+// ─── Encode helpers ───────────────────────────────────────────────────────────
 
-type MessagePayload = {
-  device_id: string;
-  iv: Uint8Array;
-  ciphertext: Uint8Array;
-};
+function encodeAuth(
+  msg: Extract<OutgoingMessage, { type: typeof MSG_AUTH }>,
+): Uint8Array {
+  const body = encode([msg.payload, msg.deviceId]);
+  const buf = new Uint8Array(1 + body.length);
+  buf[0] = MSG_AUTH;
+  buf.set(body, 1);
+  return buf;
+}
 
-export type OutgoingMessage =
-  | { type: typeof MSG_AUTH; payload: string; deviceId: string }
-  | { type: typeof MSG_KEEPALIVE; payload: 'PING' }
-  | {
-      type: typeof MSG_DATA;
-      to: bigint;
-      messageId: string;
-      timestamp: number;
-      payloads: MessagePayload[];
+function encodeKeepalive(): Uint8Array {
+  const body = encode('PING');
+  const buf = new Uint8Array(1 + body.length);
+  buf[0] = MSG_KEEPALIVE;
+  buf.set(body, 1);
+  return buf;
+}
+
+function encodeData(
+  msg: Extract<OutgoingMessage, { type: typeof MSG_DATA }>,
+): Uint8Array {
+  const messageIdBytes = new TextEncoder().encode(msg.messageId);
+  const packedPayloads = encode(msg.payloads);
+
+  const buf = new Uint8Array(1 + 8 + 8 + 36 + packedPayloads.length);
+  const view = new DataView(buf.buffer);
+
+  buf[0] = MSG_DATA;
+  view.setBigInt64(1, msg.to, false);
+
+  const tsHi = Math.floor(msg.timestamp / 0x1_0000_0000);
+  const tsLo = msg.timestamp >>> 0;
+  view.setUint32(9, tsHi, false);
+  view.setUint32(13, tsLo, false);
+
+  buf.set(messageIdBytes, 17);
+  buf.set(packedPayloads, 53);
+  return buf;
+}
+
+function encodeChatEvent(
+  msg: Extract<
+    OutgoingMessage,
+    {
+      type:
+        | typeof MSG_CHAT_REQUEST
+        | typeof MSG_CHAT_ACCEPTED
+        | typeof MSG_CHAT_DECLINED;
     }
-  | { type: typeof MSG_CHAT_REQUEST; to: number }
-  | { type: typeof MSG_CHAT_ACCEPTED; to: number }
-  | { type: typeof MSG_CHAT_DECLINED; to: number };
+  >,
+): Uint8Array {
+  const buf = new Uint8Array(9);
+  const view = new DataView(buf.buffer);
+  buf[0] = msg.type;
+  view.setUint32(1, Math.floor(msg.to / 0x1_0000_0000), false);
+  view.setUint32(5, msg.to >>> 0, false);
+  return buf;
+}
 
-export type IncomingMessage =
-  | { type: typeof MSG_AUTH; payload: 'ACK' | 'ERR' }
-  | { type: typeof MSG_KEEPALIVE; payload: 'PONG' }
-  | {
-      type: typeof MSG_DATA;
-      from: bigint;
-      messageId: string;
-      timestamp: number;
-      iv: Uint8Array;
-      ciphertext: Uint8Array;
-    }
-  | {
-      type: typeof MSG_CHAT_REQUEST;
-      from: number;
-      username: string;
-      avatar_url: string | null;
-    }
-  | { type: typeof MSG_CHAT_ACCEPTED; from: number }
-  | { type: typeof MSG_CHAT_DECLINED; from: number };
+// ─── Decode helpers ───────────────────────────────────────────────────────────
 
-// ─── Encode ──────────────────────────────────────────────────────────────────
+function decodeAuth(
+  data: Uint8Array,
+): Extract<IncomingMessage, { type: typeof MSG_AUTH }> | null {
+  if (data[1] === 0x45) return { type: MSG_AUTH, payload: 'ERR' };
+  const payload = decode(data.subarray(1));
+  if (payload === 'ACK') return { type: MSG_AUTH, payload: 'ACK' };
+  return null;
+}
+
+function decodeKeepalive(
+  data: Uint8Array,
+): Extract<IncomingMessage, { type: typeof MSG_KEEPALIVE }> | null {
+  const payload = decode(data.subarray(1));
+  if (payload === 'PONG') return { type: MSG_KEEPALIVE, payload: 'PONG' };
+  return null;
+}
+
+function decodeData(
+  data: Uint8Array,
+): Extract<IncomingMessage, { type: typeof MSG_DATA }> | null {
+  const MIN_LEN = 1 + 8 + 8 + 36 + 12 + 1;
+  if (data.length < MIN_LEN) return null;
+
+  const view = new DataView(data.buffer, data.byteOffset);
+  const from = view.getBigInt64(1, false);
+  const timestamp =
+    view.getUint32(9, false) * 0x1_0000_0000 + view.getUint32(13, false);
+  const messageId = new TextDecoder().decode(data.slice(17, 53));
+  const iv = data.slice(53, 65);
+  const ciphertext = data.slice(65);
+
+  return { type: MSG_DATA, from, timestamp, messageId, iv, ciphertext };
+}
+
+function decodeChatRequest(
+  data: Uint8Array,
+): Extract<IncomingMessage, { type: typeof MSG_CHAT_REQUEST }> {
+  const payload = decode(data.subarray(1)) as {
+    from: number;
+    username: string;
+    avatar_url: string | null;
+  };
+  return { type: MSG_CHAT_REQUEST, ...payload };
+}
+
+function decodeChatEvent(
+  data: Uint8Array,
+  type: typeof MSG_CHAT_ACCEPTED | typeof MSG_CHAT_DECLINED,
+): Extract<
+  IncomingMessage,
+  { type: typeof MSG_CHAT_ACCEPTED | typeof MSG_CHAT_DECLINED }
+> {
+  const view = new DataView(data.buffer, data.byteOffset);
+  const from =
+    view.getUint32(1, false) * 0x1_0000_0000 + view.getUint32(5, false);
+  return { type, from };
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export function encodePacket(msg: OutgoingMessage): Uint8Array {
   switch (msg.type) {
-    case MSG_AUTH: {
-      const tokenBytes = encode([msg.payload, msg.deviceId]); // массив из двух строк
-      const buf = new Uint8Array(1 + tokenBytes.length);
-      buf[0] = MSG_AUTH;
-      buf.set(tokenBytes, 1);
-      return buf;
-    }
-
-    case MSG_KEEPALIVE: {
-      const pingBytes = encode('PING');
-      const buf = new Uint8Array(1 + pingBytes.length);
-      buf[0] = MSG_KEEPALIVE;
-      buf.set(pingBytes, 1);
-      return buf;
-    }
-
-    case MSG_DATA: {
-      // [0x01][to: 8b][timestamp: 8b][messageId: 36b][msgpack(payloads)]
-      const messageIdBytes = new TextEncoder().encode(msg.messageId);
-      const packedPayloads = encode(msg.payloads);
-
-      const buf = new Uint8Array(1 + 8 + 8 + 36 + packedPayloads.length);
-      const view = new DataView(buf.buffer);
-
-      buf[0] = MSG_DATA;
-
-      view.setBigInt64(1, msg.to, false);
-
-      const tsHi = Math.floor(msg.timestamp / 0x1_0000_0000);
-      const tsLo = msg.timestamp >>> 0;
-      view.setUint32(9, tsHi, false);
-      view.setUint32(13, tsLo, false);
-
-      buf.set(messageIdBytes, 17);
-      buf.set(packedPayloads, 53);
-
-      return buf;
-    }
-
+    case MSG_AUTH:
+      return encodeAuth(msg);
+    case MSG_KEEPALIVE:
+      return encodeKeepalive();
+    case MSG_DATA:
+      return encodeData(msg);
     case MSG_CHAT_REQUEST:
     case MSG_CHAT_ACCEPTED:
-    case MSG_CHAT_DECLINED: {
-      const buf = new Uint8Array(9);
-      const view = new DataView(buf.buffer);
-      buf[0] = msg.type;
-      const hi = Math.floor(msg.to / 0x1_0000_0000);
-      const lo = msg.to >>> 0;
-      view.setUint32(1, hi, false);
-      view.setUint32(5, lo, false);
-      return buf;
-    }
+    case MSG_CHAT_DECLINED:
+      return encodeChatEvent(msg);
   }
 }
 
-// ─── Decode ──────────────────────────────────────────────────────────────────
-
 export function decodePacket(data: Uint8Array): IncomingMessage | null {
   if (data.length < 2) return null;
-
-  const type = data[0];
-
   try {
-    switch (type) {
-      case MSG_AUTH: {
-        if (data[1] === 0x45) {
-          return { type: MSG_AUTH, payload: 'ERR' };
-        }
-        const payload = decode(data.subarray(1));
-        if (payload === 'ACK') return { type: MSG_AUTH, payload: 'ACK' };
-        return null;
-      }
-
-      case MSG_KEEPALIVE: {
-        const payload = decode(data.subarray(1));
-        if (payload === 'PONG') return { type: MSG_KEEPALIVE, payload: 'PONG' };
-        return null;
-      }
-
-      case MSG_DATA: {
-        // [0x01][from: i64 be 8b][timestamp: i64 be 8b][messageId: 36b][iv: 12b][ciphertext: Nb]
-        const MIN_LEN = 1 + 8 + 8 + 36 + 12 + 1;
-        if (data.length < MIN_LEN) return null;
-
-        const view = new DataView(data.buffer, data.byteOffset);
-
-        const from = view.getBigInt64(1, false);
-
-        const tsHi = view.getUint32(9, false);
-        const tsLo = view.getUint32(13, false);
-        const timestamp = tsHi * 0x1_0000_0000 + tsLo;
-
-        const messageId = new TextDecoder().decode(data.slice(17, 53)); // UUID = 36 байт ASCII
-
-        const iv = data.slice(53, 65);
-        const ciphertext = data.slice(65);
-
-        return { type: MSG_DATA, from, timestamp, messageId, iv, ciphertext };
-      }
-
-      case MSG_CHAT_REQUEST: {
-        const payload = decode(data.subarray(1)) as {
-          from: number;
-          username: string;
-          avatar_url: string | null;
-        };
-        return { type: MSG_CHAT_REQUEST, ...payload };
-      }
-
+    switch (data[0]) {
+      case MSG_AUTH:
+        return decodeAuth(data);
+      case MSG_KEEPALIVE:
+        return decodeKeepalive(data);
+      case MSG_DATA:
+        return decodeData(data);
+      case MSG_CHAT_REQUEST:
+        return decodeChatRequest(data);
       case MSG_CHAT_ACCEPTED:
-      case MSG_CHAT_DECLINED: {
-        const view = new DataView(data.buffer, data.byteOffset);
-        const hi = view.getUint32(1, false);
-        const lo = view.getUint32(5, false);
-        const from = hi * 0x1_0000_0000 + lo;
-        return {
-          type: type as typeof MSG_CHAT_ACCEPTED | typeof MSG_CHAT_DECLINED,
-          from,
-        };
-      }
-
+      case MSG_CHAT_DECLINED:
+        return decodeChatEvent(data, data[0]);
       default:
         return null;
     }

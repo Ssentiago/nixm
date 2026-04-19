@@ -28,14 +28,14 @@ export const Sidebar = ({
   const [openSettings, setOpenSettings] = useState(false);
 
   return (
-    <aside className='w-64 shrink-0 flex flex-col border-r border-border h-full'>
+    <aside className='w-72 shrink-0 flex flex-col border-r border-border h-full'>
       <div className='p-3 border-b border-border'>
         <div className='flex items-center justify-between mb-3'>
-          <span className='text-xs font-mono text-muted-foreground tracking-widest uppercase'>
+          <span className='text-sm font-mono text-muted-foreground tracking-widest uppercase'>
             nixm
           </span>
           <span className='text-[10px] font-mono text-muted-foreground/40'>
-            v0.1
+            {__APP_VERSION__}
           </span>
         </div>
         <SearchBar value={query} onChange={setQuery} />

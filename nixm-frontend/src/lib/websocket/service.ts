@@ -1,217 +1,211 @@
 // lib/websocket/service.ts
+
+import { encodePacket, decodePacket } from './protocol';
+import { EventEmitter } from './emitter';
+import { wsRouter } from './router';
 import {
-  MSG_AUTH,
-  MSG_DATA,
-  MSG_KEEPALIVE,
   IncomingMessage,
+  MSG_AUTH,
+  MSG_KEEPALIVE,
   OutgoingMessage,
-  encodePacket,
-  decodePacket,
-} from './protocol';
+} from '@/lib/websocket/typing/definitions';
 
 export type WSStatus = 'disconnected' | 'connecting' | 'connected' | 'authed';
 
-export interface WebSocketServiceEvents {
-  status: (status: WSStatus) => void;
-  message: (msg: IncomingMessage) => void;
-  error: (err: Event) => void;
-}
+type WSEventMap = {
+  status: WSStatus;
+  error: Event;
+};
 
 interface WSConfig {
-  reconnectDelay?: number; // базовая задержка реконнекта, ms
-  maxReconnectDelay?: number; // потолок, ms
-  keepaliveInterval?: number; // интервал PING, ms
-  keepaliveTimeout?: number; // сколько ждём PONG до разрыва, ms
-  authTimeout?: number; // сколько ждём ACK после отправки токена, ms
+  reconnectDelay?: number;
+  maxReconnectDelay?: number;
+  keepaliveInterval?: number;
+  keepaliveTimeout?: number;
+  authTimeout?: number;
 }
 
-class WebSocketService {
-  private ws: WebSocket | null = null;
+class WebSocketService extends EventEmitter<WSEventMap> {
+  private socket: WebSocket | null = null;
   private status: WSStatus = 'disconnected';
   private getToken: () => string | null = () => null;
   private getMyDeviceId: () => string | null = () => null;
-  private reconnectAttempts: number = 0;
+  private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private authTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastPong: number = 0;
-  private listeners: Partial<WebSocketServiceEvents> = {};
+  private lastPong = 0;
 
   constructor(
     private url: string,
     private config: WSConfig = {},
-  ) {}
-
-  // ─── Public ──────────────────────────────────────────────────────────────
-
-  on<K extends keyof WebSocketServiceEvents>(
-    event: K,
-    handler: WebSocketServiceEvents[K],
   ) {
-    this.listeners[event] = handler;
-    return () => {
-      delete this.listeners[event];
-    };
+    super();
   }
 
-  connect(getToken: () => string | null, getMyDeviceId: () => string | null) {
+  // ─── Public ───────────────────────────────────────────────────────────────
+
+  connect(
+    getToken: () => string | null,
+    getMyDeviceId: () => string | null,
+  ): void {
     this.getToken = getToken;
     this.getMyDeviceId = getMyDeviceId;
+
     if (
-      this.ws?.readyState === WebSocket.OPEN ||
-      this.ws?.readyState === WebSocket.CONNECTING
+      this.socket?.readyState === WebSocket.OPEN ||
+      this.socket?.readyState === WebSocket.CONNECTING
     )
       return;
 
     this.setStatus('connecting');
-
-    this.ws = new WebSocket(this.url);
-    this.ws.binaryType = 'arraybuffer';
-    this.ws.onopen = () => this.handleOpen();
-    this.ws.onclose = e => this.handleClose(e);
-    this.ws.onerror = e => this.handleError(e);
-    this.ws.onmessage = e => this.handleMessage(e);
+    this.socket = new WebSocket(this.url);
+    this.socket.binaryType = 'arraybuffer';
+    this.socket.onopen = () => this.handleOpen();
+    this.socket.onclose = e => this.handleClose(e);
+    this.socket.onerror = e => this.handleError(e);
+    this.socket.onmessage = e => this.handleMessage(e);
   }
 
-  disconnect() {
+  disconnect(): void {
     this.getToken = () => null;
     this.reconnectAttempts = 0;
     this.stopReconnect();
     this.stopKeepalive();
     this.clearAuthTimer();
-    this.ws?.close(1000, 'Normal closure');
-    this.ws = null;
+    this.socket?.close(1000, 'Normal closure');
+    this.socket = null;
     this.setStatus('disconnected');
   }
 
-  send(msg: OutgoingMessage) {
-    if (this.ws?.readyState !== WebSocket.OPEN) {
+  send(msg: OutgoingMessage): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket not open');
     }
-    this.ws.send(encodePacket(msg));
+    this.socket.send(encodePacket(msg));
   }
 
-  getStatus() {
+  getStatus(): WSStatus {
     return this.status;
   }
 
-  // ─── Handlers ────────────────────────────────────────────────────────────
-  private handleOpen() {
+  // ─── Handlers ─────────────────────────────────────────────────────────────
+
+  private handleOpen(): void {
     const token = this.getToken();
     if (!token) {
-      this.ws?.close(4002, 'No token');
+      this.socket?.close(4002, 'No token');
       return;
     }
+
     const deviceId = this.getMyDeviceId();
     if (!deviceId) {
-      this.ws?.close(4002, 'No device id');
+      this.socket?.close(4002, 'No device id');
       return;
     }
 
     this.setStatus('connected');
-    this.send({
-      type: MSG_AUTH,
-      payload: token,
-      deviceId: deviceId,
-    });
+    this.send({ type: MSG_AUTH, payload: token, deviceId });
 
-    // Таймаут на ACK
     this.authTimer = setTimeout(() => {
-      console.warn('WS auth timeout');
-      this.ws?.close(4001, 'Auth timeout');
-    }, this.config.authTimeout ?? 5000);
+      console.warn('[WS] Auth timeout');
+      this.socket?.close(4001, 'Auth timeout');
+    }, this.config.authTimeout ?? 5_000);
   }
 
-  private handleMessage(event: MessageEvent) {
+  private handleMessage(event: MessageEvent): void {
     const raw =
       event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : null;
 
     if (!raw) {
-      console.warn('WS: non-binary message received');
+      console.warn('[WS] Non-binary message received');
       return;
     }
 
     const msg = decodePacket(raw);
     if (!msg) {
-      console.warn('WS: failed to decode packet');
+      console.warn('[WS] Failed to decode packet');
       return;
     }
 
-    // Служебные пакеты — обрабатываем внутри
-    if (msg.type === MSG_AUTH) {
-      this.clearAuthTimer();
-      if (msg.payload === 'ACK') {
-        this.reconnectAttempts = 0;
-        this.lastPong = Date.now();
-        this.setStatus('authed');
-        this.startKeepalive();
-      } else {
-        // ERR — токен невалиден, нет смысла реконнектиться
-        console.error('WS auth rejected by server');
-        this.getToken = () => null;
-        this.ws?.close(4002, 'Auth rejected');
-      }
-      return; // Auth пакеты наружу не пробрасываем
+    switch (msg.type) {
+      case MSG_AUTH:
+        return this.handleAuth(msg);
+      case MSG_KEEPALIVE:
+        return this.handlePong();
+      default:
+        wsRouter.dispatch(
+          msg as Exclude<
+            IncomingMessage,
+            { type: typeof MSG_AUTH | typeof MSG_KEEPALIVE }
+          >,
+        );
     }
-
-    if (msg.type === MSG_KEEPALIVE) {
-      this.lastPong = Date.now();
-      return; // PONG наружу не нужен
-    }
-
-    // Data — пробрасываем
-    this.listeners.message?.(msg);
   }
 
-  private handleClose(event: CloseEvent) {
+  private handleAuth(
+    msg: Extract<IncomingMessage, { type: typeof MSG_AUTH }>,
+  ): void {
+    this.clearAuthTimer();
+
+    if (msg.payload === 'ACK') {
+      this.reconnectAttempts = 0;
+      this.lastPong = Date.now();
+      this.setStatus('authed');
+      this.startKeepalive();
+    } else {
+      console.error('[WS] Auth rejected by server');
+      this.getToken = () => null;
+      this.socket?.close(4002, 'Auth rejected');
+    }
+  }
+
+  private handlePong(): void {
+    this.lastPong = Date.now();
+  }
+
+  private handleClose(event: CloseEvent): void {
     this.stopKeepalive();
     this.clearAuthTimer();
-    this.ws = null;
-
-    // 4002 = сервер отверг токен, реконнект бессмысленен
-    if (event.code === 4002 || !this.getToken()) {
-      this.setStatus('disconnected');
-      return;
-    }
-
-    // Любое другое закрытие — пробуем реконнект
+    this.socket = null;
     this.setStatus('disconnected');
+
+    if (event.code === 4002 || !this.getToken()) return;
     this.scheduleReconnect();
   }
 
-  private handleError(event: Event) {
-    this.listeners.error?.(event);
+  private handleError(event: Event): void {
+    this.emit('error', event);
   }
 
-  // ─── Keepalive ───────────────────────────────────────────────────────────
+  // ─── Keepalive ────────────────────────────────────────────────────────────
 
-  private startKeepalive() {
+  private startKeepalive(): void {
     this.stopKeepalive();
     const interval = this.config.keepaliveInterval ?? 30_000;
     const timeout = this.config.keepaliveTimeout ?? 90_000;
 
     this.keepaliveTimer = setInterval(() => {
       if (Date.now() - this.lastPong > timeout) {
-        console.warn('WS keepalive timeout');
-        this.ws?.close(4000, 'Keepalive timeout');
+        console.warn('[WS] Keepalive timeout');
+        this.socket?.close(4000, 'Keepalive timeout');
         return;
       }
-      if (this.ws?.readyState === WebSocket.OPEN) {
+      if (this.socket?.readyState === WebSocket.OPEN) {
         this.send({ type: MSG_KEEPALIVE, payload: 'PING' });
       }
     }, interval);
   }
 
-  private stopKeepalive() {
-    if (this.keepaliveTimer !== null) {
-      clearInterval(this.keepaliveTimer);
-      this.keepaliveTimer = null;
-    }
+  private stopKeepalive(): void {
+    if (this.keepaliveTimer === null) return;
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = null;
   }
 
-  // ─── Reconnect ───────────────────────────────────────────────────────────
+  // ─── Reconnect ────────────────────────────────────────────────────────────
 
-  private scheduleReconnect() {
+  private scheduleReconnect(): void {
     this.stopReconnect();
     const base = this.config.reconnectDelay ?? 1_000;
     const max = this.config.maxReconnectDelay ?? 30_000;
@@ -219,34 +213,31 @@ class WebSocketService {
     this.reconnectAttempts++;
 
     console.log(
-      `WS reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`,
+      `[WS] Reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`,
     );
     this.reconnectTimer = setTimeout(() => {
-      const token = this.getToken();
-      if (!token) return; // токен протух и не обновился — не реконнектимся
+      if (!this.getToken()) return;
       this.connect(this.getToken, this.getMyDeviceId);
     }, delay);
   }
 
-  private stopReconnect() {
-    if (this.reconnectTimer !== null) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+  private stopReconnect(): void {
+    if (this.reconnectTimer === null) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
-  // ─── Misc ────────────────────────────────────────────────────────────────
+  // ─── Misc ─────────────────────────────────────────────────────────────────
 
-  private clearAuthTimer() {
-    if (this.authTimer !== null) {
-      clearTimeout(this.authTimer);
-      this.authTimer = null;
-    }
+  private clearAuthTimer(): void {
+    if (this.authTimer === null) return;
+    clearTimeout(this.authTimer);
+    this.authTimer = null;
   }
 
-  private setStatus(s: WSStatus) {
-    this.status = s;
-    this.listeners.status?.(s);
+  private setStatus(status: WSStatus): void {
+    this.status = status;
+    this.emit('status', status);
   }
 }
 
