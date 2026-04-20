@@ -1,5 +1,3 @@
-// hooks/ChatContext.tsx
-
 import {
   createContext,
   ReactNode,
@@ -18,8 +16,7 @@ import { ws } from '@/lib/websocket/service';
 import { db } from '@/lib/db';
 import { ChatRecord, StoredMessage } from '@/lib/db/typing/definitions';
 import { IncomingMessage, MSG_DATA } from '@/lib/websocket/typing/definitions';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { logger } from '@/lib/logger';
 
 type ChatMessage = {
   messageId: string;
@@ -53,8 +50,6 @@ type ChatContextType = {
   addChat: (peerId: string, username: string) => void;
 };
 
-// ─── useChatsRegistry ─────────────────────────────────────────────────────────
-
 const useChatsRegistry = (profile: ReturnType<typeof useAuth>['myProfile']) => {
   const chatsRef = useRef<Map<string, ChatMeta>>(new Map());
   const [chatsVersion, setChatsVersion] = useState(0);
@@ -64,6 +59,10 @@ const useChatsRegistry = (profile: ReturnType<typeof useAuth>['myProfile']) => {
     async (peerId: string, username: string) => {
       if (chatsRef.current.has(peerId)) return;
 
+      logger.info('ChatRegistry: creating new chat session', {
+        peerId,
+        username,
+      });
       const record: ChatRecord = {
         peerId,
         username,
@@ -73,17 +72,18 @@ const useChatsRegistry = (profile: ReturnType<typeof useAuth>['myProfile']) => {
       };
 
       await db.chats.save(record);
-
       chatsRef.current.set(peerId, { ...record, peerId });
       forceUpdate();
     },
     [forceUpdate],
   );
+
   const markAsRead = useCallback(
     (peerId: string, username: string) => {
+      logger.debug('ChatRegistry: marking chat as read', { peerId });
       const meta = chatsRef.current.get(peerId);
       chatsRef.current.set(peerId, {
-        peerId: peerId,
+        peerId,
         username,
         lastMessage: meta?.lastMessage ?? '',
         lastActivity: meta?.lastActivity ?? Date.now(),
@@ -103,6 +103,10 @@ const useChatsRegistry = (profile: ReturnType<typeof useAuth>['myProfile']) => {
       isCurrentChat: boolean,
       currentUnread: number,
     ) => {
+      logger.debug('ChatRegistry: updating last message', {
+        peerId,
+        isCurrentChat,
+      });
       const chatRecord: ChatRecord = {
         peerId,
         username,
@@ -117,10 +121,10 @@ const useChatsRegistry = (profile: ReturnType<typeof useAuth>['myProfile']) => {
     [forceUpdate],
   );
 
-  // Загрузка всех peers при старте
   useEffect(() => {
     if (!profile) return;
     (async () => {
+      logger.debug('ChatRegistry: hydrating chats from DB');
       const saved = await db.chats.getAll();
       for (const record of saved) {
         if (chatsRef.current.has(record.peerId)) continue;
@@ -134,12 +138,10 @@ const useChatsRegistry = (profile: ReturnType<typeof useAuth>['myProfile']) => {
       }
       forceUpdate();
     })();
-  }, [profile]);
+  }, [profile, forceUpdate]);
 
   return { chatsRef, addChat, markAsRead, updateLastMessage };
 };
-
-// ─── useActiveChat ────────────────────────────────────────────────────────────
 
 const useActiveChat = () => {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -147,20 +149,9 @@ const useActiveChat = () => {
   const currentChatIdRef = useRef<string | null>(null);
 
   const setActive = useCallback((peerId: string) => {
+    logger.debug('ActiveChat: switching context', { peerId });
     setCurrentChatId(peerId);
     currentChatIdRef.current = peerId;
-  }, []);
-
-  const setMessages = useCallback((messages: ChatMessage[]) => {
-    setActiveMessages(messages);
-  }, []);
-
-  const appendMessage = useCallback((message: ChatMessage) => {
-    setActiveMessages(prev => [...prev, message]);
-  }, []);
-
-  const prependMessages = useCallback((messages: ChatMessage[]) => {
-    setActiveMessages(prev => [...messages, ...prev]);
   }, []);
 
   return {
@@ -168,13 +159,13 @@ const useActiveChat = () => {
     currentChatIdRef,
     activeMessages,
     setActive,
-    setMessages,
-    appendMessage,
-    prependMessages,
+    setMessages: setActiveMessages,
+    appendMessage: (msg: ChatMessage) =>
+      setActiveMessages(prev => [...prev, msg]),
+    prependMessages: (msgs: ChatMessage[]) =>
+      setActiveMessages(prev => [...msgs, ...prev]),
   };
 };
-
-// ─── useMessageHistory ────────────────────────────────────────────────────────
 
 const useMessageHistory = (
   myDeviceId: string | null,
@@ -184,19 +175,12 @@ const useMessageHistory = (
   const decryptBatch = useCallback(
     async (stored: StoredMessage[]): Promise<ChatMessage[]> => {
       if (!myDeviceId) return [];
-      const results: ChatMessage[] = [];
+      logger.debug('History: decrypting batch', { count: stored.length });
 
+      const results: ChatMessage[] = [];
       for (const msg of stored) {
         if (msg.system) {
-          results.push({
-            messageId: msg.messageId,
-            from: msg.from,
-            text: msg.ciphertext,
-            timestamp: msg.timestamp,
-            status: msg.status,
-            direction: msg.direction,
-            isSystem: true,
-          });
+          results.push({ ...msg, text: msg.ciphertext, isSystem: true });
           continue;
         }
         try {
@@ -205,16 +189,11 @@ const useMessageHistory = (
             iv: msg.iv,
             data: msg.ciphertext,
           });
-          results.push({
-            messageId: msg.messageId,
-            from: msg.from,
-            text,
-            timestamp: msg.timestamp,
-            status: msg.status,
-            direction: msg.direction,
+          results.push({ ...msg, text });
+        } catch (e) {
+          logger.warn('History: failed to decrypt message in batch', {
+            mid: msg.messageId,
           });
-        } catch {
-          console.warn('[History] Failed to decrypt message', msg.messageId);
         }
       }
       return results;
@@ -224,9 +203,13 @@ const useMessageHistory = (
 
   const load = useCallback(
     async (peerId: string): Promise<ChatMessage[]> => {
+      logger.debug('History: loading for peer', { peerId });
       let stored = await db.messages.load(peerId, 50);
 
       if (stored.length === 0 && myDeviceId && profile) {
+        logger.info('History: local cache empty, fetching from server', {
+          peerId,
+        });
         try {
           const remote = await api.messages.getHistory(peerId, myDeviceId);
           for (const msg of remote) {
@@ -244,7 +227,10 @@ const useMessageHistory = (
           }
           stored = await db.messages.load(peerId, 50);
         } catch (e) {
-          console.warn('[History] Failed to load from server', e);
+          logger.error('History: server sync failed', {
+            peerId,
+            error: String(e),
+          });
         }
       }
 
@@ -253,19 +239,8 @@ const useMessageHistory = (
     [decryptBatch, myDeviceId, profile],
   );
 
-  const loadMore = useCallback(
-    async (peerId: string, cursor: number): Promise<{ hasMore: boolean }> => {
-      const stored = await db.messages.load(peerId, 50, cursor);
-      if (stored.length === 0) return { hasMore: false };
-      return { hasMore: stored.length === 50 };
-    },
-    [decryptBatch],
-  );
-
-  return { load, loadMore, decryptBatch };
+  return { load, decryptBatch };
 };
-
-// ─── useMessageIO ─────────────────────────────────────────────────────────────
 
 const useMessageIO = (
   profile: ReturnType<typeof useAuth>['myProfile'],
@@ -277,23 +252,38 @@ const useMessageIO = (
 ) => {
   const sendMessage = useCallback(
     async (peerId: string, text: string) => {
-      if (!profile?.id || !myDeviceId) throw new Error('Not authenticated');
+      // Предпроверка без throw
+      if (!profile?.id || !myDeviceId) {
+        logger.error('IO: missing auth or deviceId', {
+          profileId: profile?.id,
+          myDeviceId,
+        });
+        return;
+      }
 
       const messageId = crypto.randomUUID();
       const timestamp = Date.now();
 
+      // 1. ШИФРОВАНИЕ
       let encrypted;
       try {
         encrypted = await encryptMessage(peerId, text);
+        logger.debug('IO: encryption done', {
+          mid: messageId,
+          devices: encrypted.length,
+        });
       } catch (e) {
-        console.error('[IO] encryptMessage failed', e);
-        return;
+        logger.error('IO: encryption error', {
+          mid: messageId,
+          error: String(e),
+        });
+        return; // Дальше идти нет смысла
       }
 
-      const myPayload =
-        encrypted.find(e => e.deviceId === myDeviceId) ?? encrypted[0];
-
+      // 2. СОХРАНЕНИЕ (IndexedDB)
       try {
+        const myPayload =
+          encrypted.find(e => e.deviceId === myDeviceId) ?? encrypted[0];
         await db.messages.save({
           messageId,
           from: profile.id,
@@ -305,10 +295,15 @@ const useMessageIO = (
           timestamp,
           status: 'pending',
         });
+        logger.debug('IO: local save ok', { mid: messageId });
       } catch (e) {
-        console.error('[IO] Failed to save message', e);
+        logger.error('IO: local save error', {
+          mid: messageId,
+          error: String(e),
+        });
       }
 
+      // 3. ОТПРАВКА (Network)
       try {
         ws.send({
           type: MSG_DATA,
@@ -321,10 +316,15 @@ const useMessageIO = (
             ciphertext: base64ToUint8Array(encryptedPayload.data),
           })),
         });
+        logger.info('IO: network dispatch ok', { mid: messageId });
       } catch (e) {
-        console.error('[IO] ws.send failed', e);
+        logger.error('IO: network dispatch error', {
+          mid: messageId,
+          error: String(e),
+        });
       }
 
+      // 4. ИНТЕРФЕЙС
       if (active.currentChatIdRef.current === peerId) {
         active.appendMessage({
           messageId,
@@ -341,16 +341,20 @@ const useMessageIO = (
 
   const handleIncomingMessage = useCallback(
     async (wsData: IncomingMessage) => {
-      if (wsData.type !== MSG_DATA) return;
-      if (!myDeviceId) return;
+      if (wsData.type !== MSG_DATA || !myDeviceId) return;
 
       const messageId = wsData.messageId;
-      if (await db.messages.exists(messageId)) return;
+      if (await db.messages.exists(messageId)) {
+        logger.debug('IO: skipping duplicate message', { mid: messageId });
+        return;
+      }
 
       const fromId = String(wsData.from);
       const ivBase64 = arrayBufferToBase64(wsData.iv);
       const timestamp = wsData.timestamp ?? Date.now();
       const ciphertextBase64 = arrayBufferToBase64(wsData.ciphertext);
+
+      logger.info('IO: received new message', { fromId, mid: messageId });
 
       await db.messages.save({
         messageId,
@@ -364,86 +368,49 @@ const useMessageIO = (
         status: 'delivered',
       });
 
-      let text: string;
       try {
-        text = await decryptMessage(fromId, myDeviceId, {
+        const text = await decryptMessage(fromId, myDeviceId, {
           iv: ivBase64,
           data: ciphertextBase64,
         });
-      } catch {
-        console.warn('[IO] Failed to decrypt incoming message', messageId);
-        return;
-      }
 
-      if (active.currentChatIdRef.current === fromId) {
-        active.appendMessage({
-          messageId,
-          from: fromId,
-          text,
-          timestamp,
-          status: 'delivered',
-          direction: 'received',
-        });
-      }
+        if (active.currentChatIdRef.current === fromId) {
+          active.appendMessage({
+            messageId,
+            from: fromId,
+            text,
+            timestamp,
+            status: 'delivered',
+            direction: 'received',
+          });
+        }
 
-      const prev = registry.chatsRef.current.get(fromId);
-      let username = prev?.username;
-      if (!username) {
-        try {
+        const prev = registry.chatsRef.current.get(fromId);
+        let username = prev?.username;
+        if (!username) {
           const user = await api.users.getUser(fromId);
           username = user.username;
-        } catch {
-          username = fromId;
         }
-      }
 
-      registry.updateLastMessage(
-        fromId,
-        username,
-        text,
-        timestamp,
-        active.currentChatIdRef.current === fromId,
-        prev?.unreadCount ?? 0,
-      );
+        registry.updateLastMessage(
+          fromId,
+          username,
+          text,
+          timestamp,
+          active.currentChatIdRef.current === fromId,
+          prev?.unreadCount ?? 0,
+        );
+      } catch (e) {
+        logger.warn('IO: received message but decryption failed', {
+          mid: messageId,
+        });
+      }
     },
     [myDeviceId, profile, decryptMessage, active, registry],
   );
 
   return { sendMessage, handleIncomingMessage };
 };
-
-// ─── useChatSession ───────────────────────────────────────────────────────────
-
-const useChatSession = (
-  active: ReturnType<typeof useActiveChat>,
-  history: ReturnType<typeof useMessageHistory>,
-  registry: ReturnType<typeof useChatsRegistry>,
-) => {
-  const openChat = useCallback(
-    async (peerId: string, username: string) => {
-      registry.markAsRead(peerId, username);
-      active.setActive(peerId);
-      const messages = await history.load(peerId);
-      active.setMessages(messages);
-    },
-    [active, history, registry],
-  );
-
-  const loadMoreHistory = useCallback(
-    async (peerId: string, cursor: number) => {
-      const stored = await db.messages.load(peerId, 50, cursor);
-      if (stored.length === 0) return { hasMore: false };
-      const decrypted = await history.decryptBatch(stored);
-      active.prependMessages(decrypted);
-      return { hasMore: stored.length === 50 };
-    },
-    [active, history],
-  );
-
-  return { openChat, loadMoreHistory };
-};
-
-// ─── Provider ─────────────────────────────────────────────────────────────────
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
@@ -462,24 +429,46 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     registry,
     active,
   );
-  const session = useChatSession(active, history, registry);
+
+  const openChat = useCallback(
+    async (peerId: string, username: string) => {
+      logger.info('ChatContext: opening chat', { peerId, username });
+      registry.markAsRead(peerId, username);
+      active.setActive(peerId);
+      const messages = await history.load(peerId);
+      active.setMessages(messages);
+    },
+    [active, history, registry],
+  );
+
+  const loadMoreHistory = useCallback(
+    async (peerId: string, cursor: number) => {
+      logger.debug('ChatContext: fetching older messages', { peerId, cursor });
+      const stored = await db.messages.load(peerId, 50, cursor);
+      if (stored.length === 0) return { hasMore: false };
+      const decrypted = await history.decryptBatch(stored);
+      active.prependMessages(decrypted);
+      return { hasMore: stored.length === 50 };
+    },
+    [active, history],
+  );
 
   const ctx = useMemo<ChatContextType>(
     () => ({
       chats: registry.chatsRef.current,
       activeMessages: active.activeMessages,
       currentChatId: active.currentChatId,
-      openChat: session.openChat,
+      openChat,
       sendMessage: io.sendMessage,
-      loadMoreHistory: session.loadMoreHistory,
+      loadMoreHistory,
       handleIncomingMessage: io.handleIncomingMessage,
       addChat: registry.addChat,
     }),
     [
       active.activeMessages,
       active.currentChatId,
-      session.openChat,
-      session.loadMoreHistory,
+      openChat,
+      loadMoreHistory,
       io.sendMessage,
       io.handleIncomingMessage,
       registry.addChat,
@@ -490,8 +479,8 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   return <ChatContext.Provider value={ctx}>{children}</ChatContext.Provider>;
 }
 
-export function useChatContext(): ChatContextType {
+export const useChatContext = () => {
   const ctx = useContext(ChatContext);
   if (!ctx) throw new Error('useChatContext must be used within ChatProvider');
   return ctx;
-}
+};

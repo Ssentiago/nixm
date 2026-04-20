@@ -4,9 +4,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api/api';
+import { logger } from '@/lib/logger';
 
 const BANNED_USERNAMES = [
-  // Служебные и системные
   'admin',
   'administrator',
   'root',
@@ -21,8 +21,6 @@ const BANNED_USERNAMES = [
   'developer',
   'security',
   'bot',
-
-  // Роли и владельцы
   'owner',
   'creator',
   'founder',
@@ -33,8 +31,6 @@ const BANNED_USERNAMES = [
   'nixm_official',
   'nixm_dev',
   'nixm_bot',
-
-  // Технические эндпоинты (чтобы не путать роутинг)
   'api',
   'auth',
   'login',
@@ -49,13 +45,12 @@ const BANNED_USERNAMES = [
   'profile',
   'user',
   'guest',
-
-  // Попытки подделки статуса
   'verified',
   'check',
   'confirmed',
   'service',
 ];
+
 const SIgnUp = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -65,6 +60,7 @@ const SIgnUp = () => {
 
   useEffect(() => {
     if (isRegistered) {
+      logger.info('SignUp: registration process finished, starting redirect');
       setSuccess('Registration successful! Redirecting...');
       const timer = setTimeout(() => navigate('/', { replace: true }), 1500);
       return () => clearTimeout(timer);
@@ -81,54 +77,71 @@ const SIgnUp = () => {
     const password = (formData.get('password') as string).trim();
     const passwordAgain = (formData.get('password-again') as string).trim();
 
+    logger.debug('SignUp: validating form data', { username });
+
     if (!username.match(/^[A-Za-z0-9_-]{3,32}$/)) {
+      logger.warn('SignUp: validation failed (invalid username format)', {
+        username,
+      });
       return setError(
         'Username should contains only latin letters, digits, underscore and minus, and must be 3..32 length.',
       );
     }
 
     if (BANNED_USERNAMES.includes(username.toLowerCase())) {
+      logger.warn('SignUp: validation failed (banned username)', { username });
       return setError('Username is not allowed.');
     }
 
-    if (password !== passwordAgain) return setError("Passwords don't match");
-    if (password.length < 8) return setError('Password too short');
+    if (password !== passwordAgain) {
+      logger.warn('SignUp: validation failed (passwords mismatch)');
+      return setError("Passwords don't match");
+    }
+
+    if (password.length < 8) {
+      logger.warn('SignUp: validation failed (password too short)');
+      return setError('Password too short');
+    }
 
     const regex =
       /^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).{8,}$/;
     if (!password.match(regex)) {
+      logger.warn('SignUp: validation failed (weak password complexity)');
       return setError('Password must be at least 8 characters long...');
     }
 
-    setIsLoading(true); // Включаем лоадер только когда данные валидны
-    try {
-      // Ждем ответа от бэка
-      await api.auth.register({ username, password });
+    logger.debug('SignUp: validation passed, sending request to API');
+    setIsLoading(true);
 
-      // Если мы здесь — регистрация в БД прошла успешно
+    try {
+      await api.auth.register({ username, password });
+      logger.info('SignUp: server accepted registration', { username });
       setIsRegistered(true);
     } catch (err) {
       if (err instanceof ApiError) {
+        logger.warn('SignUp: API rejected registration', {
+          username,
+          status: err.status,
+          message: err.message,
+        });
         setError(err.message);
       } else {
+        logger.error('SignUp: unexpected fatal error', { error: String(err) });
         setError('An unexpected error occurred');
       }
     } finally {
       setIsLoading(false);
     }
   };
+
   return (
     <div className='flex flex-col min-h-screen'>
-      {/* Большой заголовок */}
       <header className='w-full border-b border-border/50 text-center py-8'>
         <h1 className='text-5xl font-bold tracking-tighter'>Sign Up to Nixm</h1>
       </header>
 
       <main className='flex-1 flex flex-col items-center justify-center p-8'>
-        <form
-          onSubmit={handleSubmit}
-          className='w-full max-w-md space-y-8' // ← шире и больше отступов
-        >
+        <form onSubmit={handleSubmit} className='w-full max-w-md space-y-8'>
           {error && (
             <div className='p-4 text-base text-red-600 bg-red-50 border border-red-200 rounded-xl'>
               {error}
@@ -149,7 +162,7 @@ const SIgnUp = () => {
               id='username'
               name='username'
               placeholder='enter username'
-              className='text-lg py-6' // ← крупнее
+              className='text-lg py-6'
               required
               disabled={isLoading || !!success}
             />
@@ -190,13 +203,13 @@ const SIgnUp = () => {
             type='submit'
             disabled={isLoading || !!success}
             className={`
-    w-full py-7 rounded-2xl text-xl font-bold tracking-tight transition-all
-    ${
-      isLoading || !!success
-        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' // Состояние при загрузке
-        : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-300 active:scale-[0.98]' // Активное состояние
-    }
-  `}
+              w-full py-7 rounded-2xl text-xl font-bold tracking-tight transition-all
+              ${
+                isLoading || !!success
+                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                  : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-300 active:scale-[0.98]'
+              }
+            `}
           >
             {isLoading ? 'Registering...' : 'Sign Up'}
           </Button>

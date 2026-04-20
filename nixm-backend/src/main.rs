@@ -44,7 +44,6 @@ async fn main() {
     let state = AppState {
         pool,
         connections: Arc::new(RwLock::new(HashMap::new())),
-        expiry_index: Arc::new(RwLock::new(BTreeSet::new())),
     };
 
     let cleanup_state = state.clone();

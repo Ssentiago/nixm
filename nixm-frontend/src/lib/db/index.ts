@@ -1,4 +1,5 @@
 import Dexie, { Table } from 'dexie';
+import { logger } from '@/lib/logger';
 import {
   ChatRecord,
   KeyRecord,
@@ -18,23 +19,60 @@ class NixmDB extends Dexie {
   private _chatsRepo?: ChatsRepository;
 
   get keys() {
-    return (this._keysRepo ??= new KeysRepository(this._keys));
+    if (!this._keysRepo) {
+      logger.debug('NixmDB: Accessing KeysRepository for the first time');
+      this._keysRepo = new KeysRepository(this._keys);
+    }
+    return this._keysRepo;
   }
 
   get messages() {
-    return (this._messagesRepo ??= new MessagesRepository(this._messages));
+    if (!this._messagesRepo) {
+      logger.debug('NixmDB: Accessing MessagesRepository for the first time');
+      this._messagesRepo = new MessagesRepository(this._messages);
+    }
+    return this._messagesRepo;
   }
 
   get chats() {
-    return (this._chatsRepo ??= new ChatsRepository(this._chats));
+    if (!this._chatsRepo) {
+      logger.debug('NixmDB: Accessing ChatsRepository for the first time');
+      this._chatsRepo = new ChatsRepository(this._chats);
+    }
+    return this._chatsRepo;
   }
 
   constructor() {
     super('nixm');
+
+    logger.info('NixmDB: initializing IndexedDB instance', {
+      dbName: 'nixm',
+      version: 1,
+    });
+
     this.version(1).stores({
       _keys: 'id',
       _messages: 'messageId, [peerId+timestamp]',
       _chats: 'peerId',
+    });
+
+    // Хуки состояния БД
+    this.on('ready', () => {
+      logger.info('NixmDB: connection established and database is ready');
+    });
+
+    this.on('versionchange', event => {
+      logger.warn('NixmDB: database version change detected', {
+        newVersion: event.newVersion,
+      });
+    });
+
+    this.on('blocked', () => {
+      logger.error('NixmDB: connection blocked by another tab/instance');
+    });
+
+    this.on('populate', () => {
+      logger.info('NixmDB: first time population of the database');
     });
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { EventEmitter } from './emitter';
 import {
   IncomingMessage,
@@ -21,6 +22,17 @@ type MessageEventMap = {
 
 class MessageRouter extends EventEmitter<MessageEventMap> {
   dispatch(msg: IncomingMessage): void {
+    logger.debug('MessageRouter: dispatching incoming packet', {
+      type: msg.type,
+      // Добавляем специфичные для типа метаданные для удобства поиска
+      ...(msg.type === MSG_DATA
+        ? { from: String(msg.from), mid: msg.messageId }
+        : {}),
+      ...(msg.type === MSG_CHAT_REQUEST
+        ? { from: String(msg.from), user: msg.username }
+        : {}),
+    });
+
     switch (msg.type) {
       case MSG_DATA:
         this.emit(MSG_DATA, msg);
@@ -34,6 +46,12 @@ class MessageRouter extends EventEmitter<MessageEventMap> {
       case MSG_CHAT_DECLINED:
         this.emit(MSG_CHAT_DECLINED, msg);
         break;
+      default:
+        // На случай, если в IncomingMessage появятся новые типы,
+        // а в роутер их забуду добавить
+        logger.warn('MessageRouter: received unhandled message type', {
+          type: (msg as any).type,
+        });
     }
   }
 }

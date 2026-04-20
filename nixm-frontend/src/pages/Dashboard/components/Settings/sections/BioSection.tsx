@@ -5,9 +5,9 @@ import { api, ApiError } from '@/lib/api/api';
 const MAX_BIO = 160;
 
 export const BioSection = () => {
-  const { profile, setProfile } = useAuth();
+  const { myProfile, setMyProfile } = useAuth();
   const [editing, setEditing] = useState(false);
-  const [bio, setBio] = useState(profile?.bio ?? '');
+  const [bio, setBio] = useState(myProfile?.bio ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -16,7 +16,7 @@ export const BioSection = () => {
     setError('');
     try {
       await api.users.updateBio(bio);
-      setProfile(prev => (prev ? { ...prev, bio } : prev));
+      setMyProfile(prev => (prev ? { ...prev, bio } : prev));
       setEditing(false);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to save bio');
@@ -26,7 +26,7 @@ export const BioSection = () => {
   };
 
   const handleCancel = () => {
-    setBio(profile?.bio ?? '');
+    setBio(myProfile?.bio ?? '');
     setEditing(false);
     setError('');
   };

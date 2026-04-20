@@ -51,11 +51,11 @@ export const ChatsOverlay = ({
           {filtered.length > 0 ? (
             filtered.map(chat => (
               <ChatItem
-                key={chat.userId}
+                key={chat.peerId}
                 chat={chat}
-                active={chat.userId === activeId}
+                active={chat.peerId === activeId}
                 onClick={() => {
-                  onSelect(chat.userId, chat.username);
+                  onSelect(chat.peerId, chat.username);
                   onClose();
                 }}
               />

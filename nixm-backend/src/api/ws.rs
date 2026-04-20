@@ -110,8 +110,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 last_keepalive: last_keepalive,
             },
         );
-        let mut index = state.expiry_index.write().await;
-        index.insert((last_keepalive, user_id, device_id.clone()));
     }
 
     println!("WS authed: user_id={user_id}, device_id={device_id}");
@@ -124,8 +122,8 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             for p in &pending {
                 let packet = build_data_packet(
                     user_id,
-                    timestamp,
-                    &message_uuid,
+                    p.timestamp,
+                    &p.message_uuid,
                     &device_id, // device_id отправителя из WS сессии
                     &p.iv,
                     &p.ciphertext,
@@ -204,14 +202,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                                                 let now = Instant::now();
 
                                                 let mut conns = state.connections.write().await;
-                                                let mut index = state.expiry_index.write().await;
 
                                                 if let Some(ws) = conns.get_mut(&(user_id, device_id.clone())) {
-                                                    index.remove(&(ws.last_keepalive, user_id, device_id.clone()));
 
                                                     ws.last_keepalive = now;
 
-                                                    index.insert((now, user_id, device_id.clone()));
 
                                                     println!("keepalive updated: user_id={user_id}");
                                                 } else {

@@ -34,6 +34,7 @@ export type IncomingMessage =
       from: bigint;
       messageId: string;
       timestamp: number;
+      senderDeviceId: string;
       iv: Uint8Array;
       ciphertext: Uint8Array;
     }

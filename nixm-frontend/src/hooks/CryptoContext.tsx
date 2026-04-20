@@ -1,6 +1,7 @@
 import {
   createContext,
   ReactNode,
+  Ref,
   useCallback,
   useContext,
   useEffect,
@@ -12,6 +13,7 @@ import { api, ApiError } from '@/lib/api/api';
 import { NixmCrypto } from '@/lib/crypto';
 import { useAuth } from '@/hooks/AuthContext';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 export type EncryptedPayload = {
   iv: string;
@@ -19,9 +21,7 @@ export type EncryptedPayload = {
 };
 
 export type PeerID = string;
-
-export type PeerDeviceID = string; // UUID (36 characters)
-
+export type PeerDeviceID = string;
 type PeerPublicKeyBase64 = string;
 
 type PeersPublicKeysCache = Record<
@@ -46,63 +46,69 @@ type Status = 'loading' | 'ready' | 'error';
 
 const useMyKeys = () => {
   const { myProfile, isLoading } = useAuth();
-
   const [myPrivateKeyBase64, setMyPrivateKeyBase64] = useState<string | null>(
+    null,
+  );
+  const [myPublicKeyBase64, setMyPublicKeyBase64] = useState<string | null>(
     null,
   );
   const [myDeviceId, setMyDeviceId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      if (!myProfile) return;
-
-      if (myPrivateKeyBase64 === null) {
-        const key = await db.keys.getPrivateKey(myProfile.id);
-
-        if (key === null) {
-          console.error('Cannot get user private key');
-        } else {
-          setMyPrivateKeyBase64(key);
-        }
-      }
-    })();
-  }, [myPrivateKeyBase64]);
-
   const syncKeys = useCallback(async () => {
-    console.log(`sync keys called. me: ${JSON.stringify(myProfile)}`);
+    logger.debug('Crypto: syncKeys called', { profile: myProfile?.id });
+
     if (!myProfile) {
       setStatus('loading');
       return;
     }
+
     try {
       let publicData = await db.keys.getPublicData(myProfile.id);
-      console.log(publicData);
 
       if (!publicData) {
-        publicData = await db.keys.generateAndSaveKeys(myProfile.id); // берём данные сразу
+        logger.info('Crypto: no keys found, generating new device keys');
+        publicData = await db.keys.generateAndSaveKeys(myProfile.id);
       }
 
       if (!publicData) {
+        logger.error('Crypto: failed to get or generate public data');
         setError('Failed to get encryption keys.');
         setStatus('error');
         return;
       }
 
+      const privateKey = await db.keys.getPrivateKey(myProfile.id);
+      if (!privateKey) {
+        logger.error('Crypto: private key missing after generation');
+        setError('Failed to load private key.');
+        setStatus('error');
+        return;
+      }
+
+      setMyPrivateKeyBase64(privateKey);
+      setMyPublicKeyBase64(publicData.publicKey);
+
       await api.keys.upload(publicData.publicKey, publicData.deviceId);
       setMyDeviceId(publicData.deviceId);
       setStatus('ready');
+
+      logger.info('Crypto: infrastructure ready', {
+        deviceId: publicData.deviceId,
+      });
     } catch (e) {
       if (e instanceof ApiError) {
+        logger.error('Crypto: API error during key sync', { error: e.message });
         setError(e.message);
       } else {
+        logger.error('Crypto: unexpected error during key sync', {
+          error: String(e),
+        });
         setError('Failed to initialize encryption keys.');
       }
       setStatus('error');
     }
-  }, [myProfile, isLoading]);
-
+  }, [myProfile]);
   useEffect(() => {
     if (isLoading) return;
     if (!myProfile) {
@@ -110,9 +116,15 @@ const useMyKeys = () => {
       return;
     }
     syncKeys();
-  }, [myProfile, isLoading]);
+  }, [myProfile, isLoading, syncKeys]);
 
-  return { myPrivateKeyBase64, myDeviceId, status, error };
+  return {
+    myPrivateKeyBase64,
+    myPublicKeyBase64,
+    myDeviceId,
+    status,
+    error,
+  };
 };
 
 const usePeerCrypto = (myPrivateKeyBase64: string | null) => {
@@ -120,7 +132,8 @@ const usePeerCrypto = (myPrivateKeyBase64: string | null) => {
   const peersCryptoServiceCache = useRef<
     Map<PeerID, Map<PeerDeviceID, NixmCrypto>>
   >(new Map());
-
+  const selfCryptoRef = useRef<NixmCrypto | null>(null);
+  const getSelfCrypto = useCallback(() => selfCryptoRef.current, []);
   const ensurePublicKeysLoaded = useCallback(
     async (peerId: PeerID) => {
       if (!myPrivateKeyBase64) throw new Error('Private key not loaded');
@@ -129,6 +142,7 @@ const usePeerCrypto = (myPrivateKeyBase64: string | null) => {
         return peersPublicKeysCache.current[peerId];
       }
 
+      logger.debug('Crypto: fetching peer public keys', { peerId });
       const records = await api.keys.keysFor(peerId);
 
       const deviceMap = new Map<PeerDeviceID, PeerPublicKeyBase64>();
@@ -142,6 +156,24 @@ const usePeerCrypto = (myPrivateKeyBase64: string | null) => {
     [myPrivateKeyBase64],
   );
 
+  const initSelfCrypto = useCallback(
+    async (myPublicKey: string) => {
+      if (!myPrivateKeyBase64) {
+        logger.warn('Crypto: initSelfCrypto called but no private key');
+        return;
+      }
+      if (selfCryptoRef.current) {
+        logger.debug('Crypto: selfCrypto already initialized');
+        return;
+      }
+      const service = new NixmCrypto(myPrivateKeyBase64, myPublicKey);
+      await service.init();
+      selfCryptoRef.current = service;
+      logger.info('Crypto: self crypto service initialized');
+    },
+    [myPrivateKeyBase64],
+  );
+
   const ensureCryptoServicesLoaded = useCallback(
     async (peerUserID: PeerID) => {
       if (!myPrivateKeyBase64) throw new Error('Private key not loaded');
@@ -150,18 +182,19 @@ const usePeerCrypto = (myPrivateKeyBase64: string | null) => {
         return peersCryptoServiceCache.current.get(peerUserID)!;
       }
 
+      logger.debug('Crypto: initializing crypto services for peer', {
+        peerUserID,
+      });
       const publicKeysMap = await ensurePublicKeysLoaded(peerUserID);
-
       const servicesMap = new Map<PeerDeviceID, NixmCrypto>();
 
-      const tasks: Array<Promise<{ deviceId: string; service: NixmCrypto }>> =
-        Array.from(publicKeysMap.entries()).map(
-          async ([deviceId, publicKey]) => {
-            const service = new NixmCrypto(myPrivateKeyBase64!, publicKey);
-            await service.init(); // Деривация ключа
-            return { deviceId, service };
-          },
-        );
+      const tasks = Array.from(publicKeysMap.entries()).map(
+        async ([deviceId, publicKey]) => {
+          const service = new NixmCrypto(myPrivateKeyBase64!, publicKey);
+          await service.init();
+          return { deviceId, service };
+        },
+      );
 
       const results = await Promise.all(tasks);
 
@@ -170,13 +203,17 @@ const usePeerCrypto = (myPrivateKeyBase64: string | null) => {
       }
 
       peersCryptoServiceCache.current.set(peerUserID, servicesMap);
+      logger.debug('Crypto: services initialized', {
+        peerUserID,
+        devicesCount: results.length,
+      });
 
       return servicesMap;
     },
-    [myPrivateKeyBase64],
+    [myPrivateKeyBase64, ensurePublicKeysLoaded],
   );
 
-  return { ensureCryptoServicesLoaded };
+  return { ensureCryptoServicesLoaded, initSelfCrypto, getSelfCrypto };
 };
 
 const useEncryption = (
@@ -184,34 +221,35 @@ const useEncryption = (
   ensureCryptoServicesLoaded: (
     peerUserID: PeerID,
   ) => Promise<Map<string, NixmCrypto>>,
+  myDeviceId: string | null,
+  getSelfCrypto: () => NixmCrypto | null,
 ) => {
   const encryptMessage = useCallback(
-    async (
-      userId: PeerID,
-      text: string,
-    ): Promise<{ deviceId: string; encryptedPayload: EncryptedPayload }[]> => {
-      if (!myPrivateKeyBase64) {
-        throw new Error('Private key not found');
-      }
+    async (userId: PeerID, text: string) => {
+      if (!myPrivateKeyBase64) throw new Error('Private key not found');
 
       const cryptoServices = await ensureCryptoServicesLoaded(userId);
 
       const tasks = [...cryptoServices.entries()].map(
         async ([deviceId, crypto]) => {
           const encryptedPayload = await crypto.encrypt(text);
-
-          return {
-            deviceId,
-            encryptedPayload,
-          };
+          return { deviceId, encryptedPayload };
         },
       );
 
-      return await Promise.all(tasks);
-    },
-    [myPrivateKeyBase64, ensureCryptoServicesLoaded],
-  );
+      const results = await Promise.all(tasks);
 
+      // добавляем payload для себя
+      const selfCrypto = getSelfCrypto();
+      if (selfCrypto && myDeviceId) {
+        const selfPayload = await selfCrypto.encrypt(text);
+        results.push({ deviceId: myDeviceId, encryptedPayload: selfPayload });
+      }
+
+      return results;
+    },
+    [myPrivateKeyBase64, ensureCryptoServicesLoaded, getSelfCrypto, myDeviceId],
+  );
   const decryptMessage = useCallback(
     async (
       userId: PeerID,
@@ -219,17 +257,50 @@ const useEncryption = (
       encryptedPayload: EncryptedPayload,
     ) => {
       if (!myPrivateKeyBase64) {
+        logger.error('Crypto: decryption failed - private key missing');
         throw new Error('Private key not found');
       }
 
-      const cryptoServices = await ensureCryptoServicesLoaded(userId);
+      logger.debug('Crypto: decryptMessage called', {
+        userId,
+        deviceId,
+        myDeviceId,
+        equal: deviceId === myDeviceId,
+        hasSelfCrypto: !!getSelfCrypto(),
+      });
 
+      if (deviceId === myDeviceId) {
+        const selfCrypto = getSelfCrypto();
+        if (!selfCrypto) throw new Error('Self crypto not initialized');
+        return selfCrypto.decrypt(encryptedPayload.data, encryptedPayload.iv);
+      }
+
+      const cryptoServices = await ensureCryptoServicesLoaded(userId);
       const crypto = cryptoServices.get(deviceId);
+
       if (!crypto) {
+        logger.warn('Crypto: missing service for device during decryption', {
+          userId,
+          deviceId,
+        });
         throw new Error('No crypto initialized');
       }
 
-      return await crypto.decrypt(encryptedPayload.data, encryptedPayload.iv);
+      try {
+        const decrypted = await crypto.decrypt(
+          encryptedPayload.data,
+          encryptedPayload.iv,
+        );
+        logger.debug('Crypto: successful decryption', { userId, deviceId });
+        return decrypted;
+      } catch (e) {
+        logger.error('Crypto: decryption failed', {
+          userId,
+          deviceId,
+          error: String(e),
+        });
+        throw e;
+      }
     },
     [myPrivateKeyBase64, ensureCryptoServicesLoaded],
   );
@@ -240,12 +311,32 @@ const useEncryption = (
 const CryptoContext = createContext<CryptoContextType | null>(null);
 
 export function CryptoContextProvider({ children }: { children: ReactNode }) {
-  const { myPrivateKeyBase64, status, error, myDeviceId } = useMyKeys();
-  const { ensureCryptoServicesLoaded } = usePeerCrypto(myPrivateKeyBase64);
+  const { myPrivateKeyBase64, myPublicKeyBase64, status, error, myDeviceId } =
+    useMyKeys();
+  const { ensureCryptoServicesLoaded, initSelfCrypto, getSelfCrypto } =
+    usePeerCrypto(myPrivateKeyBase64);
   const { encryptMessage, decryptMessage } = useEncryption(
     myPrivateKeyBase64,
     ensureCryptoServicesLoaded,
+    myDeviceId,
+    getSelfCrypto,
   );
+
+  useEffect(() => {
+    logger.debug('Crypto: attempting selfCrypto init', {
+      myPublicKeyBase64,
+      myPrivateKeyBase64: !!myPrivateKeyBase64,
+    });
+    if (myPublicKeyBase64) initSelfCrypto(myPublicKeyBase64);
+
+    (window as any).check = () => {
+      console.log(getSelfCrypto());
+      console.log(`my public key: ${myPublicKeyBase64}`);
+      console.log(`my private key: ${myPrivateKeyBase64}`);
+      console.log(`my device id: ${myDeviceId}`);
+    };
+  }, [myPublicKeyBase64, initSelfCrypto]);
+
   const ctx: CryptoContextType = useMemo(
     () => ({
       isReady: status === 'ready',
@@ -253,7 +344,7 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
       decryptMessage,
       myDeviceId,
     }),
-    [encryptMessage, decryptMessage, status],
+    [encryptMessage, decryptMessage, status, myDeviceId],
   );
 
   return (
@@ -264,6 +355,7 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
 export function useCryptoContext() {
   const ctx = useContext(CryptoContext);
   if (!ctx) {
+    logger.error('Crypto: useCryptoContext used outside of provider');
     throw new Error('useCryptoContext must be used within Provider');
   }
   return ctx;

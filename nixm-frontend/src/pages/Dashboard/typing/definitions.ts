@@ -1,5 +1,5 @@
 export type Chat = {
-  userId: string;
+  peerId: string;
   username: string;
   lastMessage: string;
   lastActivity: number;

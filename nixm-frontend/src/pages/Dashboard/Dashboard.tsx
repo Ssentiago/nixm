@@ -7,32 +7,36 @@ import { EmptyState } from '@/pages/Dashboard/components/EmptyState';
 import { ChatView } from '@/pages/Dashboard/components/ChatView';
 import { ChatsOverlay } from '@/pages/Dashboard/components/ChatsOverlay';
 import { ws } from '@/lib/websocket/service';
-import { IncomingMessage, MSG_CHAT_REQUEST } from '@/lib/websocket/protocol';
 import { useNotifications } from '@/hooks/NotificationContext';
+import { wsRouter } from '@/lib/websocket/router';
+import { MSG_CHAT_REQUEST, MSG_DATA } from '@/lib/websocket/typing/definitions';
 
 const Dashboard = () => {
   const [overlayOpen, setOverlayOpen] = useState(false);
-  const { profile } = useAuth();
+  const { myProfile } = useAuth();
   const { chats, currentChatId, openChat, handleIncomingMessage } =
     useChatContext();
   const { addNotification } = useNotifications();
 
   useEffect(() => {
-    const unsub = ws.on('message', (msg: IncomingMessage) => {
-      if (msg.type === MSG_CHAT_REQUEST) {
-        addNotification({
-          id: `chat_request_${msg.from}`,
-          type: 'chat_request',
-          from: msg.from,
-          username: msg.username,
-          avatar_url: msg.avatar_url,
-          at: Date.now(),
-        });
-        return;
-      }
-      handleIncomingMessage(msg);
+    const unsubChatRequest = wsRouter.on(MSG_CHAT_REQUEST, msg => {
+      addNotification({
+        id: `chat_request_${msg.from}`,
+        type: 'chat_request',
+        from: msg.from,
+        username: msg.username,
+        avatar_url: msg.avatar_url,
+        at: Date.now(),
+      });
     });
-    return unsub;
+
+    const unsubData = wsRouter.on(MSG_DATA, async msg => {
+      await handleIncomingMessage(msg);
+    });
+    return () => {
+      unsubData();
+      unsubChatRequest();
+    };
   }, [handleIncomingMessage]);
 
   // Преобразуем Map<string, ChatMeta> в массив для рендера

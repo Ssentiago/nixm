@@ -3,73 +3,69 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api/api';
 import { User } from '@/lib/api/modules/auth';
 import { ws } from '@/lib/websocket/service';
+import { useAuth } from '@/hooks/AuthContext';
 import {
   MSG_CHAT_ACCEPTED,
   MSG_CHAT_DECLINED,
   MSG_CHAT_REQUEST,
-} from '@/lib/websocket/protocol';
-import { saveMessage } from '@/lib/db/messages';
-import { useAuth } from '@/hooks/AuthContext';
+  MSG_DATA,
+} from '@/lib/websocket/typing/definitions';
+import { wsRouter } from '@/lib/websocket/router';
+import { db } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 export const EmptyState = () => {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [profile, setProfile] = useState<User | null>(null);
+  const [peerProfile, setPeerProfile] = useState<User | null>(null);
   const [requested, setRequested] = useState(false);
   const [isDeclined, setIsDeclined] = useState(false);
-  const { profile } = useAuth();
+  const { myProfile } = useAuth();
 
   const { openChat } = useChatContext();
 
   useEffect(() => {
-    // Подписываемся на сообщения только если у нас открыт чей-то профиль
-    if (!profile) return;
+    if (!myProfile) return;
+    if (!peerProfile) return;
 
-    const unsub = ws.on('message', async msg => {
-      if (!profile) return;
-      console.log(JSON.stringify(msg));
-      if (!('from' in msg)) {
-        return;
+    const unsubAccepted = wsRouter.on(MSG_CHAT_ACCEPTED, async msg => {
+      if (!myProfile) return;
+      if (Number(msg.from) !== Number(myProfile.id)) return;
+
+      setRequested(false);
+      try {
+        await db.messages.save({
+          messageId: `system-${myProfile.id}-${Date.now()}`,
+          from: String(myProfile.id),
+          to: String(myProfile.id),
+          peerId: String(myProfile.id),
+          direction: 'received',
+          ciphertext: 'Session Established',
+          iv: '',
+          timestamp: Date.now(),
+          status: 'delivered',
+          system: true,
+        });
+      } catch (e) {
+        logger.warn('Failed to save system message', { error: String(e) });
       }
-      if (Number(msg.from) !== Number(profile.id)) {
-        return;
-      }
-
-      switch (msg.type) {
-        case MSG_CHAT_ACCEPTED:
-          // Если Алиса приняла запрос — переходим в чат
-          setRequested(false);
-
-          try {
-            await saveMessage({
-              messageId: `system-${profile.id}-${Date.now()}`,
-              from: String(profile.id),
-              to: String(profile?.id),
-              peerId: String(profile.id),
-              direction: 'received',
-              ciphertext: 'Session Established',
-              iv: '',
-              timestamp: Date.now(),
-              status: 'delivered',
-              system: true,
-            });
-          } catch (e) {
-            console.warn('Failed to save system message', e);
-          }
-          await openChat(profile.id, profile.username);
-          break;
-
-        case MSG_CHAT_DECLINED:
-          // Если Алиса отклонила — показываем ошибку в UI
-          setIsDeclined(true);
-          setRequested(false);
-          break;
-      }
+      await openChat(myProfile.id, myProfile.username);
     });
 
-    return () => unsub();
-  }, [profile, openChat]);
+    const unsubDeclined = wsRouter.on(MSG_CHAT_DECLINED, async msg => {
+      if (!myProfile) return;
+      if (Number(msg.from) !== Number(myProfile.id)) return;
+
+      setIsDeclined(true);
+      setRequested(false);
+    });
+
+    return () => {
+      unsubAccepted();
+      unsubDeclined();
+    };
+  }, [myProfile, openChat]);
 
   const handleResolve = async () => {
     const trimmed = code.trim();
@@ -77,13 +73,13 @@ export const EmptyState = () => {
 
     setLoading(true);
     setError('');
-    setProfile(null);
+    setPeerProfile(null);
     setRequested(false);
     setIsDeclined(false);
 
     try {
       const user = await api.invites.resolve(trimmed);
-      setProfile(user);
+      setPeerProfile(user);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Invalid invite code');
     } finally {
@@ -92,15 +88,15 @@ export const EmptyState = () => {
   };
 
   const handleRequest = () => {
-    if (!profile) return;
+    if (!peerProfile) return;
     // Отправляем запрос через сокет
-    ws.send({ type: MSG_CHAT_REQUEST, to: Number(profile.id) });
+    ws.send({ type: MSG_CHAT_REQUEST, to: Number(peerProfile.id) });
     setRequested(true);
     setIsDeclined(false);
   };
 
   const reset = () => {
-    setProfile(null);
+    setPeerProfile(null);
     setCode('');
     setError('');
     setIsDeclined(false);
@@ -109,7 +105,7 @@ export const EmptyState = () => {
 
   return (
     <div className='flex-1 flex flex-col items-center justify-center gap-6 select-none px-8'>
-      {!profile ? (
+      {!peerProfile ? (
         <>
           <div className='font-mono text-sm space-y-1 text-center'>
             <p className='text-muted-foreground'>no channel selected</p>
@@ -144,15 +140,15 @@ export const EmptyState = () => {
         <div className='w-full max-w-xs flex flex-col items-center gap-4'>
           {/* Аватарка */}
           <div className='w-20 h-20 rounded-full overflow-hidden bg-secondary border border-border flex items-center justify-center'>
-            {profile.avatar_url ? (
+            {peerProfile.avatar_url ? (
               <img
-                src={`http://localhost:5900${profile.avatar_url}`}
+                src={`http://localhost:5900${peerProfile.avatar_url}`}
                 alt='avatar'
                 className='w-full h-full object-cover'
               />
             ) : (
               <span className='text-2xl font-mono text-muted-foreground'>
-                {profile.username[0].toUpperCase()}
+                {peerProfile.username[0].toUpperCase()}
               </span>
             )}
           </div>
@@ -160,11 +156,11 @@ export const EmptyState = () => {
           {/* Имя и Био */}
           <div className='text-center'>
             <p className='text-sm font-mono text-foreground'>
-              {profile.username}
+              {peerProfile.username}
             </p>
-            {profile.bio && (
+            {peerProfile.bio && (
               <p className='text-xs font-mono text-muted-foreground/60 mt-1'>
-                {profile.bio}
+                {peerProfile.bio}
               </p>
             )}
           </div>

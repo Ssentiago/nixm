@@ -24,7 +24,7 @@ export const Sidebar = ({
     : chats;
   const { notifications } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
-  const { profile } = useAuth();
+  const { myProfile } = useAuth();
   const [openSettings, setOpenSettings] = useState(false);
 
   return (
@@ -44,10 +44,10 @@ export const Sidebar = ({
         {filtered.length > 0 ? (
           filtered.map(chat => (
             <ChatItem
-              key={chat.userId}
+              key={chat.peerId}
               chat={chat}
-              active={chat.userId === activeId}
-              onClick={() => onSelect(chat.userId, chat.username)}
+              active={chat.peerId === activeId}
+              onClick={() => onSelect(chat.peerId, chat.username)}
             />
           ))
         ) : (
@@ -64,16 +64,19 @@ export const Sidebar = ({
           <div className='flex items-center gap-2'>
             <Avatar className='w-6 h-6'>
               <AvatarImage
-                src={`http://localhost:5900${profile?.avatar_url}`}
-                alt={profile?.username}
+                src={`http://localhost:5900${myProfile?.avatar_url}`}
+                alt={myProfile?.username}
                 className='object-cover rounded-full'
               />
               <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono'>
-                {profile?.username?.[0]?.toUpperCase() ?? '?'}
+                {myProfile?.username?.[0]?.toUpperCase() ?? '?'}
               </AvatarFallback>
             </Avatar>
             <span className='text-xs font-mono text-muted-foreground'>
-              {profile?.username ?? 'unknown'}
+              {myProfile?.username ?? 'unknown'}
+            </span>
+            <span className='text-xs font-mono text-muted-foreground'>
+              {myProfile?.id ?? 'unknown'}
             </span>
             <div className='ml-auto flex items-center gap-1'>
               <button

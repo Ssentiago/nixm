@@ -1,24 +1,22 @@
 use crate::state::AppState;
 use std::time::Instant;
 
+// cleanup/mod.rs
 pub async fn main(state: AppState) {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
 
-        let mut index = state.expiry_index.write().await;
+        let now = Instant::now();
         let mut conns = state.connections.write().await;
 
-        let now = Instant::now();
-
-        while let Some(entry) = index.first().cloned() {
-            let (ts, uid, did) = entry;
-            if now.duration_since(ts).as_secs() < 90 {
-                break;
+        conns.retain(|(uid, did), ws| {
+            let age = now.duration_since(ws.last_keepalive).as_secs();
+            if age >= 90 {
+                println!("Cleaned up: user {uid} device {did}");
+                false
+            } else {
+                true
             }
-
-            index.pop_first();
-            conns.remove(&(uid, did));
-            println!("Cleaned up: user {uid}");
-        }
+        });
     }
 }

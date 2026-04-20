@@ -3,20 +3,19 @@ import { useAuth } from '@/hooks/AuthContext';
 import { api, ApiError } from '@/lib/api/api';
 
 export const AvatarSection = () => {
-  const { profile } = useAuth();
+  const { myProfile, setMyProfile } = useAuth();
   const [preview, setPreview] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const { setProfile } = useAuth();
 
   useEffect(() => {
-    console.log(JSON.stringify(profile));
-  }, [profile]);
+    console.log(JSON.stringify(myProfile));
+  }, [myProfile]);
 
-  const avatarUrl = `http://localhost:5900${profile?.avatar_url}`;
-  const initials = profile?.username?.[0]?.toUpperCase() ?? '?';
+  const avatarUrl = `http://localhost:5900${myProfile?.avatar_url}`;
+  const initials = myProfile?.username?.[0]?.toUpperCase() ?? '?';
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -27,7 +26,7 @@ export const AvatarSection = () => {
       const formData = new FormData();
       formData.append('avatar', file);
       const { avatar_url } = await api.users.uploadAvatar(formData);
-      setProfile(prev => (prev ? { ...prev, avatar_url } : prev));
+      setMyProfile(prev => (prev ? { ...prev, avatar_url } : prev));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to upload');
     } finally {

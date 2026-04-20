@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/AuthContext';
 import { api, ApiError } from '@/lib/api/api';
+import { logger } from '@/lib/logger';
 
 const SignIn = () => {
   const { login } = useAuth();
@@ -18,15 +19,34 @@ const SignIn = () => {
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const data = Object.fromEntries(formData.entries());
+    const data = Object.fromEntries(formData.entries()) as {
+      username: string;
+      password: string;
+    };
+
+    logger.debug('SignIn: login attempt started', { username: data.username });
+
     try {
-      const resp = await api.auth.login(
-        data as { username: string; password: string },
-      );
+      const resp = await api.auth.login(data);
+
+      logger.info('SignIn: authentication successful', {
+        username: data.username,
+      });
       login(resp.access_token);
     } catch (err) {
       if (err instanceof ApiError) {
+        logger.warn('SignIn: authentication rejected', {
+          username: data.username,
+          status: err.status,
+          message: err.toString(),
+        });
         setError(err.toString());
+      } else {
+        logger.error('SignIn: unexpected login error', {
+          username: data.username,
+          error: String(err),
+        });
+        setError('An unexpected error occurred');
       }
     } finally {
       setIsLoading(false);

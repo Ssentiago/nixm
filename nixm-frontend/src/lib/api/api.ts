@@ -1,10 +1,10 @@
-// lib/api/index.ts
 import { AuthModule } from '@/lib/api/modules/auth';
 import { ApiClient } from '@/lib/api/definitions';
 import { KeysModule } from '@/lib/api/modules/keys';
 import { InvitesModule } from '@/lib/api/modules/inviteLinks';
 import { MessagesModule } from '@/lib/api/modules/messages';
 import { UsersModule } from '@/lib/api/modules/users';
+import { logger } from '@/lib/logger';
 
 export class ApiError extends Error {
   constructor(
@@ -31,6 +31,7 @@ export class ApiError extends Error {
     return null;
   }
 }
+
 class Api implements ApiClient {
   public auth: AuthModule;
   public keys: KeysModule;
@@ -50,15 +51,19 @@ class Api implements ApiClient {
   }
 
   setToken(token: string | null) {
+    logger.debug('API: token updated', { hasToken: !!token });
     this.token = token;
   }
 
   async request<T>(path: string, options?: RequestInit): Promise<T> {
-    // Собираем путь: '/api' + '/auth/login' = '/api/auth/login'
     let url;
     try {
       url = new URL(`${this.API_PREFIX}${path}`, 'http://localhost:5900');
     } catch (e) {
+      logger.error('API: invalid path construction', {
+        path,
+        error: String(e),
+      });
       throw new Error(`Invalid API path: ${path}`);
     }
 
@@ -70,21 +75,48 @@ class Api implements ApiClient {
       headers.set('Content-Type', 'application/json');
     }
 
-    const response = await fetch(url, { ...options, headers });
+    logger.debug('API: outgoing request', {
+      method: options?.method || 'GET',
+      path,
+    });
 
-    if (!response.ok) {
+    try {
+      const response = await fetch(url, { ...options, headers });
+
+      if (!response.ok) {
+        const text = await response.text();
+        const errorPayload = { message: text };
+
+        logger.warn('API: request failed', {
+          path,
+          status: response.status,
+          error: text,
+        });
+
+        throw new ApiError(response.status, errorPayload);
+      }
+
       const text = await response.text();
 
-      const errorPayload = { message: text };
+      logger.debug('API: response received', {
+        path,
+        status: response.status,
+        contentLength: text.length,
+      });
 
-      throw new ApiError(response.status, errorPayload);
-    }
+      if (!text) {
+        return undefined as T;
+      }
+      return JSON.parse(text) as T;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
 
-    const text = await response.text();
-    if (!text) {
-      return undefined as T;
+      logger.error('API: network or parsing error', {
+        path,
+        error: String(e),
+      });
+      throw e;
     }
-    return JSON.parse(text) as T;
   }
 }
 

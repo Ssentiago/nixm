@@ -23,7 +23,7 @@ export const SafetyNumberModal = ({
   username: string;
   onClose: () => void;
 }) => {
-  const { profile } = useAuth();
+  const { myProfile } = useAuth();
   const [tab, setTab] = useState<Tab>('number');
 
   const [safetyNumber, setSafetyNumber] = useState<string | null>(null);
@@ -38,8 +38,8 @@ export const SafetyNumberModal = ({
 
   useEffect(() => {
     (async () => {
-      if (!profile) return;
-      const publicData = await db.keys.getPublicData(profile.id);
+      if (!myProfile) return;
+      const publicData = await db.keys.getPublicData(myProfile.id);
 
       const myKey = publicData?.publicKey;
       if (!myKey) return;
@@ -60,14 +60,14 @@ export const SafetyNumberModal = ({
       // setIsVerified(!!trusted);
 
       // QR для себя
-      const qrPayload: QRPayload = {
-        userId: String(profile.id),
-        username: profile.username,
-        publicKey: myKey,
-      };
-      setMyQRData(JSON.stringify(qrPayload));
+      // const qrPayload: QRPayload = {
+      //   userId: String(myKey.id),
+      //   username: myProfile.username,
+      //   publicKey: myKey,
+      // };
+      // setMyQRData(JSON.stringify(qrPayload));
     })();
-  }, [userId, profile]);
+  }, [userId, myProfile]);
 
   // Запуск сканера
   useEffect(() => {
@@ -94,7 +94,7 @@ export const SafetyNumberModal = ({
           async (result, error) => {
             if (!result) return;
 
-            if (!profile) return;
+            if (!myProfile) return;
 
             try {
               const payload: QRPayload = JSON.parse(result.getText());
@@ -111,13 +111,13 @@ export const SafetyNumberModal = ({
               // });
 
               // Пересчитываем safety number по верифицированному ключу
-              const publicData = await db.keys.getPublicData(profile.id);
+              const publicData = await db.keys.getPublicData(myProfile.id);
               const myKey = publicData?.publicKey;
-              if (myKey && profile) {
+              if (myKey && myProfile) {
                 const number = await computeSafetyNumber(
                   myKey,
                   payload.publicKey,
-                  String(profile.id),
+                  String(myProfile.id),
                   userId,
                 );
                 setSafetyNumber(number);

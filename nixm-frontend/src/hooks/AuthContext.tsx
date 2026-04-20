@@ -12,6 +12,7 @@ import {
 import { api } from '@/lib/api/api';
 import { ws } from '@/lib/websocket/service';
 import { AccessToken, User } from '@/lib/api/modules/auth';
+import { logger } from '@/lib/logger';
 
 interface AuthContextType {
   token: string | null;
@@ -25,16 +26,21 @@ interface AuthContextType {
 
 const useProfile = (token: string | null) => {
   const [myProfile, setMyProfile] = useState<User | null>(null);
+
   useEffect(() => {
     if (!token) {
       setMyProfile(null);
       return;
     }
+
     (async () => {
+      logger.debug('Auth: fetching user profile');
       try {
         const me = await api.auth.me();
+        logger.info('Auth: profile loaded', { username: me.username });
         setMyProfile(me);
-      } catch {
+      } catch (e) {
+        logger.error('Auth: failed to load profile', { error: String(e) });
         setMyProfile(null);
       }
     })();
@@ -58,6 +64,7 @@ const useSession = () => {
   const updateAccessToken = useCallback(async () => {
     try {
       setIsLoading(true);
+      logger.debug('Auth: starting token refresh');
 
       if (!refreshPromiseRef.current) {
         refreshPromiseRef.current = api.auth.updateAccessToken();
@@ -66,13 +73,19 @@ const useSession = () => {
       const data = await refreshPromiseRef.current;
 
       if (!data.access_token) {
-        console.error('[Auth] No access token in response');
+        logger.error('Auth: no access token in refresh response');
         return;
       }
 
+      logger.info('Auth: token successfully refreshed', {
+        expiresIn: data.expires_in,
+      });
       setToken(data.access_token);
       scheduleRefreshRef.current?.(data.expires_in);
-    } catch {
+    } catch (e) {
+      logger.warn('Auth: session refresh failed or expired', {
+        error: String(e),
+      });
       setToken(null);
     } finally {
       setIsLoading(false);
@@ -81,32 +94,51 @@ const useSession = () => {
   }, []);
 
   scheduleRefreshRef.current = (expiresIn: number) => {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+    }
 
     const delay = (expiresIn - 5) * 1000;
+    logger.debug('Auth: scheduling next refresh', { delayMs: delay });
 
     if (delay <= 0) {
       updateAccessToken();
       return;
     }
 
-    refreshTimerRef.current = setTimeout(() => updateAccessToken(), delay);
+    refreshTimerRef.current = setTimeout(() => {
+      logger.debug('Auth: refresh timer triggered');
+      updateAccessToken();
+    }, delay);
   };
 
   useEffect(() => {
+    logger.debug('Auth: initial session check');
     updateAccessToken();
 
     return () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      if (refreshTimerRef.current) {
+        logger.debug('Auth: cleaning up session timers');
+        clearTimeout(refreshTimerRef.current);
+      }
     };
-  }, []);
+  }, [updateAccessToken]);
 
-  const login = (token: string) => setToken(token);
+  const login = (token: string) => {
+    logger.info('Auth: user logged in manually');
+    setToken(token);
+  };
 
   const logout = async () => {
+    logger.info('Auth: initiating logout');
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     setToken(null);
-    await api.auth.logout();
+    try {
+      await api.auth.logout();
+      logger.info('Auth: logout successful');
+    } catch (e) {
+      logger.error('Auth: logout request failed', { error: String(e) });
+    }
   };
 
   return { token, isLoading, isAuthenticated: !!token, login, logout };
@@ -137,6 +169,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  if (!context) {
+    const err = new Error('useAuth must be used within AuthProvider');
+    logger.error('Auth: context usage error', { error: err.message });
+    throw err;
+  }
   return context;
 };

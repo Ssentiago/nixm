@@ -1,15 +1,18 @@
 import { useAuth } from '@/hooks/AuthContext';
 import { ws } from '@/lib/websocket/service';
-import { MSG_CHAT_ACCEPTED, MSG_CHAT_DECLINED } from '@/lib/websocket/protocol';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useNotifications } from '@/hooks/NotificationContext';
-import { saveMessage } from '@/lib/db/messages';
 import { useChatContext } from '@/hooks/ChatContext';
 import { api } from '@/lib/api/api';
+import {
+  MSG_CHAT_ACCEPTED,
+  MSG_CHAT_DECLINED,
+} from '@/lib/websocket/typing/definitions';
+import { db } from '@/lib/db';
 
 export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
   const { notifications, removeNotification } = useNotifications();
-  const { profile } = useAuth();
+  const { myProfile } = useAuth();
   const { addChat } = useChatContext();
 
   const handleAccept = async (
@@ -17,15 +20,15 @@ export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
     fromUsername: string,
     id: string,
   ) => {
-    if (!profile) return;
+    if (!myProfile) return;
 
     ws.send({ type: MSG_CHAT_ACCEPTED, to: from });
     removeNotification(id);
     try {
-      await saveMessage({
+      await db.messages.save({
         messageId: `system-${from}-${Date.now()}`,
         from: from.toString(),
-        to: String(profile.id),
+        to: String(myProfile.id),
         peerId: from.toString(),
         direction: 'received',
         ciphertext: 'Session Established',
@@ -34,7 +37,7 @@ export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
         status: 'delivered',
         system: true,
       });
-      await addChat(String(from), fromUsername);
+      addChat(String(from), fromUsername);
     } catch (e) {
       console.warn('Failed to save system message', e);
     }

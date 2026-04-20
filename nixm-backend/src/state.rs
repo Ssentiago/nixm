@@ -13,5 +13,4 @@ pub struct WsSender {
 pub struct AppState {
     pub pool: PgPool,
     pub connections: Arc<RwLock<HashMap<(i64, String), WsSender>>>,
-    pub expiry_index: Arc<RwLock<BTreeSet<(Instant, i64, String)>>>,
 }
