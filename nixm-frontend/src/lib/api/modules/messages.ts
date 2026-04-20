@@ -2,6 +2,7 @@ import { ApiClient } from '@/lib/api/definitions';
 
 export interface RemoteMessage {
   messageId: string;
+  senderDeviceId: string;
   from: string;
   to: string;
   timestamp: number;

@@ -18,6 +18,7 @@ export type MessageStatus =
 
 export interface StoredMessage {
   messageId: string;
+  senderDeviceId: string;
   from: string;
   to: string;
   peerId: string;

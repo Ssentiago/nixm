@@ -17,6 +17,7 @@ import { db } from '@/lib/db';
 import { ChatRecord, StoredMessage } from '@/lib/db/typing/definitions';
 import { IncomingMessage, MSG_DATA } from '@/lib/websocket/typing/definitions';
 import { logger } from '@/lib/logger';
+import { KeyStore } from '@/lib/keystore';
 
 type ChatMessage = {
   messageId: string;
@@ -168,13 +169,12 @@ const useActiveChat = () => {
 };
 
 const useMessageHistory = (
-  myDeviceId: string | null,
-  decryptMessage: ReturnType<typeof useCryptoContext>['decryptMessage'],
+  keyStore: KeyStore | null,
   profile: ReturnType<typeof useAuth>['myProfile'],
 ) => {
   const decryptBatch = useCallback(
     async (stored: StoredMessage[]): Promise<ChatMessage[]> => {
-      if (!myDeviceId) return [];
+      if (!keyStore?.deviceId) return [];
       logger.debug('History: decrypting batch', { count: stored.length });
 
       const results: ChatMessage[] = [];
@@ -184,11 +184,16 @@ const useMessageHistory = (
           continue;
         }
         try {
-          const peerId = msg.direction === 'received' ? msg.from : msg.to;
-          const text = await decryptMessage(peerId, myDeviceId, {
-            iv: msg.iv,
-            data: msg.ciphertext,
-          });
+          const senderId = msg.direction === 'received' ? msg.from : msg.to;
+          // для исходящих — мы сами зашифровали под свой deviceId
+          const senderDeviceId =
+            msg.direction === 'sent' ? keyStore.deviceId! : msg.senderDeviceId;
+
+          const text = await keyStore.decrypt(
+            { iv: msg.iv, data: msg.ciphertext },
+            senderId,
+            senderDeviceId,
+          );
           results.push({ ...msg, text });
         } catch (e) {
           logger.warn('History: failed to decrypt message in batch', {
@@ -198,7 +203,7 @@ const useMessageHistory = (
       }
       return results;
     },
-    [myDeviceId, decryptMessage],
+    [keyStore],
   );
 
   const load = useCallback(
@@ -206,12 +211,15 @@ const useMessageHistory = (
       logger.debug('History: loading for peer', { peerId });
       let stored = await db.messages.load(peerId, 50);
 
-      if (stored.length === 0 && myDeviceId && profile) {
+      if (stored.length === 0 && keyStore?.deviceId && profile) {
         logger.info('History: local cache empty, fetching from server', {
           peerId,
         });
         try {
-          const remote = await api.messages.getHistory(peerId, myDeviceId);
+          const remote = await api.messages.getHistory(
+            peerId,
+            keyStore.deviceId,
+          );
           for (const msg of remote) {
             await db.messages.save({
               messageId: msg.messageId,
@@ -223,6 +231,7 @@ const useMessageHistory = (
               iv: msg.iv,
               timestamp: msg.timestamp,
               status: 'delivered',
+              senderDeviceId: msg.senderDeviceId,
             });
           }
           stored = await db.messages.load(peerId, 50);
@@ -236,7 +245,7 @@ const useMessageHistory = (
 
       return decryptBatch(stored);
     },
-    [decryptBatch, myDeviceId, profile],
+    [decryptBatch, keyStore, profile],
   );
 
   return { load, decryptBatch };
@@ -244,19 +253,16 @@ const useMessageHistory = (
 
 const useMessageIO = (
   profile: ReturnType<typeof useAuth>['myProfile'],
-  myDeviceId: string | null,
-  encryptMessage: ReturnType<typeof useCryptoContext>['encryptMessage'],
-  decryptMessage: ReturnType<typeof useCryptoContext>['decryptMessage'],
+  keyStore: KeyStore | null,
   registry: ReturnType<typeof useChatsRegistry>,
   active: ReturnType<typeof useActiveChat>,
 ) => {
   const sendMessage = useCallback(
     async (peerId: string, text: string) => {
-      // Предпроверка без throw
-      if (!profile?.id || !myDeviceId) {
-        logger.error('IO: missing auth or deviceId', {
+      if (!profile?.id || !keyStore?.deviceId) {
+        logger.error('IO: missing auth or keyStore', {
           profileId: profile?.id,
-          myDeviceId,
+          deviceId: keyStore?.deviceId,
         });
         return;
       }
@@ -265,35 +271,36 @@ const useMessageIO = (
       const timestamp = Date.now();
 
       // 1. ШИФРОВАНИЕ
-      let encrypted;
+      let blobs;
       try {
-        encrypted = await encryptMessage(peerId, text);
+        blobs = await keyStore.encryptForAll(text, [peerId]);
         logger.debug('IO: encryption done', {
           mid: messageId,
-          devices: encrypted.length,
+          devices: blobs.length,
         });
       } catch (e) {
         logger.error('IO: encryption error', {
           mid: messageId,
           error: String(e),
         });
-        return; // Дальше идти нет смысла
+        return;
       }
 
-      // 2. СОХРАНЕНИЕ (IndexedDB)
+      // 2. СОХРАНЕНИЕ
       try {
-        const myPayload =
-          encrypted.find(e => e.deviceId === myDeviceId) ?? encrypted[0];
+        const myBlob =
+          blobs.find(b => b.deviceId === keyStore.deviceId) ?? blobs[0];
         await db.messages.save({
           messageId,
           from: profile.id,
           to: peerId,
           peerId,
           direction: 'sent',
-          ciphertext: myPayload.encryptedPayload.data,
-          iv: myPayload.encryptedPayload.iv,
+          ciphertext: myBlob.payload.data,
+          iv: myBlob.payload.iv,
           timestamp,
           status: 'pending',
+          senderDeviceId: keyStore.deviceId,
         });
         logger.debug('IO: local save ok', { mid: messageId });
       } catch (e) {
@@ -303,17 +310,17 @@ const useMessageIO = (
         });
       }
 
-      // 3. ОТПРАВКА (Network)
+      // 3. ОТПРАВКА
       try {
         ws.send({
           type: MSG_DATA,
           to: BigInt(peerId),
           messageId,
           timestamp,
-          payloads: encrypted.map(({ deviceId, encryptedPayload }) => ({
+          payloads: blobs.map(({ deviceId, payload }) => ({
             device_id: deviceId,
-            iv: base64ToUint8Array(encryptedPayload.iv),
-            ciphertext: base64ToUint8Array(encryptedPayload.data),
+            iv: base64ToUint8Array(payload.iv),
+            ciphertext: base64ToUint8Array(payload.data),
           })),
         });
         logger.info('IO: network dispatch ok', { mid: messageId });
@@ -336,12 +343,12 @@ const useMessageIO = (
         });
       }
     },
-    [profile, myDeviceId, encryptMessage, active],
+    [profile, keyStore, active],
   );
 
   const handleIncomingMessage = useCallback(
     async (wsData: IncomingMessage) => {
-      if (wsData.type !== MSG_DATA || !myDeviceId) return;
+      if (wsData.type !== MSG_DATA || !keyStore?.deviceId) return;
 
       const messageId = wsData.messageId;
       if (await db.messages.exists(messageId)) {
@@ -353,6 +360,7 @@ const useMessageIO = (
       const ivBase64 = arrayBufferToBase64(wsData.iv);
       const timestamp = wsData.timestamp ?? Date.now();
       const ciphertextBase64 = arrayBufferToBase64(wsData.ciphertext);
+      const senderDeviceId = wsData.senderDeviceId;
 
       logger.info('IO: received new message', { fromId, mid: messageId });
 
@@ -366,13 +374,15 @@ const useMessageIO = (
         iv: ivBase64,
         timestamp,
         status: 'delivered',
+        senderDeviceId,
       });
 
       try {
-        const text = await decryptMessage(fromId, myDeviceId, {
-          iv: ivBase64,
-          data: ciphertextBase64,
-        });
+        const text = await keyStore.decrypt(
+          { iv: ivBase64, data: ciphertextBase64 },
+          fromId,
+          senderDeviceId,
+        );
 
         if (active.currentChatIdRef.current === fromId) {
           active.appendMessage({
@@ -406,7 +416,7 @@ const useMessageIO = (
         });
       }
     },
-    [myDeviceId, profile, decryptMessage, active, registry],
+    [keyStore, profile, active, registry],
   );
 
   return { sendMessage, handleIncomingMessage };
@@ -416,19 +426,12 @@ const ChatContext = createContext<ChatContextType | null>(null);
 
 export function ChatContextProvider({ children }: { children: ReactNode }) {
   const { myProfile } = useAuth();
-  const { encryptMessage, decryptMessage, myDeviceId } = useCryptoContext();
+  const { keyStore } = useCryptoContext();
 
   const registry = useChatsRegistry(myProfile);
   const active = useActiveChat();
-  const history = useMessageHistory(myDeviceId, decryptMessage, myProfile);
-  const io = useMessageIO(
-    myProfile,
-    myDeviceId,
-    encryptMessage,
-    decryptMessage,
-    registry,
-    active,
-  );
+  const history = useMessageHistory(keyStore, myProfile);
+  const io = useMessageIO(myProfile, keyStore, registry, active);
 
   const openChat = useCallback(
     async (peerId: string, username: string) => {

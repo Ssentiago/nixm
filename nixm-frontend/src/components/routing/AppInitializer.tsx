@@ -5,19 +5,20 @@ import { ws } from '@/lib/websocket/service';
 
 export const AppInitializer = ({ children }: { children: ReactNode }) => {
   const { token } = useAuth();
-  const { myDeviceId, isReady } = useCryptoContext();
+  const { keyStore, isReady } = useCryptoContext();
   const tokenRef = useRef(token);
-  const deviceIdRef = useRef(myDeviceId);
+  const deviceIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
-  useEffect(() => {
-    deviceIdRef.current = myDeviceId;
-  }, [myDeviceId]);
 
   useEffect(() => {
-    if (token && myDeviceId && isReady) {
+    deviceIdRef.current = keyStore?.deviceId ?? null;
+  }, [keyStore, isReady]);
+
+  useEffect(() => {
+    if (token && isReady && keyStore?.deviceId) {
       ws.connect(
         () => tokenRef.current,
         () => deviceIdRef.current,
@@ -25,7 +26,7 @@ export const AppInitializer = ({ children }: { children: ReactNode }) => {
     } else {
       ws.disconnect();
     }
-  }, [token, myDeviceId, isReady]);
+  }, [token, isReady, keyStore]);
 
   return <>{children}</>;
 };
