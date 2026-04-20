@@ -23,23 +23,19 @@ const CryptoContext = createContext<CryptoContextType | null>(null);
 
 export function CryptoContextProvider({ children }: { children: ReactNode }) {
   const { myProfile, isLoading } = useAuth();
-  const keyStoreRef = useRef<KeyStore | null>(null);
+  const [keyStore, setKeyStore] = useState<KeyStore | null>(null);
   const [status, setStatus] = useState<Status>('loading');
 
   const init = useCallback(async (userId: string) => {
-    logger.info('CryptoContext: initializing KeyStore', { userId });
     try {
       const store = new KeyStore();
       await store.init(userId);
-      keyStoreRef.current = store;
+      setKeyStore(store);
       setStatus('ready');
-      logger.info('CryptoContext: KeyStore ready');
     } catch (e) {
-      logger.error('CryptoContext: KeyStore init failed', { error: String(e) });
       setStatus('error');
     }
   }, []);
-
   useEffect(() => {
     if (isLoading) return;
 
@@ -53,10 +49,10 @@ export function CryptoContextProvider({ children }: { children: ReactNode }) {
 
   const ctx = useMemo<CryptoContextType>(
     () => ({
-      keyStore: keyStoreRef.current,
+      keyStore: keyStore,
       isReady: status === 'ready',
     }),
-    [status],
+    [status, keyStore],
   );
 
   return (
