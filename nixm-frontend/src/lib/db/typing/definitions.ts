@@ -28,3 +28,13 @@ export interface StoredMessage {
   status: MessageStatus;
   system?: boolean;
 }
+
+// Chats
+
+export interface ChatRecord {
+  peerId: string;
+  username: string;
+  lastMessage: string;
+  lastActivity: number;
+  unreadCount: number;
+}

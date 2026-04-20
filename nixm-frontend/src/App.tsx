@@ -1,18 +1,19 @@
 import React from 'react';
-import { AppProvider, useAppContext } from '@/hooks/AppContext';
+import { AppProvider } from '@/hooks/AppContext';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Landing from '@/pages/Landing';
 import AppContainer from './components/AppContainer';
 import SignIn from '@/pages/SignIn';
 import { AuthProvider } from '@/hooks/AuthContext';
-import SIgnUp from '@/pages/SignUp';
+import SignUp from '@/pages/SignUp';
 import ProtectedRoute from '@/components/routing/ProtectedRoute';
 import PublicRoute from '@/components/routing/PublicRoute';
 import Dashboard from '@/pages/Dashboard/Dashboard';
-import KeysGuard from '@/components/routing/KeyGuard';
 import { CryptoContextProvider } from '@/hooks/CryptoContext';
 import { ChatContextProvider } from '@/hooks/ChatContext';
 import { NotificationsProvider } from '@/hooks/NotificationContext';
+import { AppInitializer } from '@/components/routing/AppInitializer';
+
 const App = () => {
   return (
     <AppProvider>
@@ -40,7 +41,7 @@ const App = () => {
                 path='/register'
                 element={
                   <PublicRoute>
-                    <SIgnUp />
+                    <SignUp />
                   </PublicRoute>
                 }
               />
@@ -48,15 +49,15 @@ const App = () => {
                 path='/dashboard'
                 element={
                   <ProtectedRoute>
-                    <KeysGuard>
-                      <CryptoContextProvider>
+                    <CryptoContextProvider>
+                      <AppInitializer>
                         <NotificationsProvider>
                           <ChatContextProvider>
                             <Dashboard />
                           </ChatContextProvider>
                         </NotificationsProvider>
-                      </CryptoContextProvider>
-                    </KeysGuard>
+                      </AppInitializer>
+                    </CryptoContextProvider>
                   </ProtectedRoute>
                 }
               />

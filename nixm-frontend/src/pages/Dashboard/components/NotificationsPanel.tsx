@@ -9,7 +9,7 @@ import { api } from '@/lib/api/api';
 
 export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
   const { notifications, removeNotification } = useNotifications();
-  const { me } = useAuth();
+  const { profile } = useAuth();
   const { addChat } = useChatContext();
 
   const handleAccept = async (
@@ -17,7 +17,7 @@ export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
     fromUsername: string,
     id: string,
   ) => {
-    if (!me) return;
+    if (!profile) return;
 
     ws.send({ type: MSG_CHAT_ACCEPTED, to: from });
     removeNotification(id);
@@ -25,7 +25,7 @@ export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
       await saveMessage({
         messageId: `system-${from}-${Date.now()}`,
         from: from.toString(),
-        to: String(me.id),
+        to: String(profile.id),
         peerId: from.toString(),
         direction: 'received',
         ciphertext: 'Session Established',

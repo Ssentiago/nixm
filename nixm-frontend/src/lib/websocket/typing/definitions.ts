@@ -52,7 +52,6 @@ type WSEventMap = {
   error: Event;
 };
 
-// роутинг по типам входящих сообщений
 type MessageEventMap = {
   [MSG_DATA]: Extract<IncomingMessage, { type: typeof MSG_DATA }>;
   [MSG_CHAT_REQUEST]: Extract<

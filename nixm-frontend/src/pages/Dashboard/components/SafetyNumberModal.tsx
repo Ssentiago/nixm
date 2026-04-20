@@ -4,8 +4,7 @@ import { BrowserQRCodeReader } from '@zxing/browser';
 import { useAuth } from '@/hooks/AuthContext';
 import { api } from '@/lib/api/api';
 import { computeSafetyNumber } from '@/lib/crypto';
-import { getTrustedKey, saveTrustedKey } from '@/lib/db/trustedKeys';
-import { getPublicData } from '@/lib/db/keys';
+import { db } from '@/lib/db';
 
 type Tab = 'number' | 'myqr' | 'scan';
 
@@ -24,7 +23,7 @@ export const SafetyNumberModal = ({
   username: string;
   onClose: () => void;
 }) => {
-  const { me } = useAuth();
+  const { profile } = useAuth();
   const [tab, setTab] = useState<Tab>('number');
 
   const [safetyNumber, setSafetyNumber] = useState<string | null>(null);
@@ -39,36 +38,36 @@ export const SafetyNumberModal = ({
 
   useEffect(() => {
     (async () => {
-      if (!me) return;
-      const publicData = await getPublicData(me.id);
+      if (!profile) return;
+      const publicData = await db.keys.getPublicData(profile.id);
 
       const myKey = publicData?.publicKey;
       if (!myKey) return;
 
       // Проверяем есть ли верифицированный ключ локально
-      const trusted = await getTrustedKey(userId);
-      const theirKey =
-        trusted?.publicKey ?? (await api.keys.keysFor(userId))[0]?.public_key;
-      if (!theirKey) return;
+      // const trusted = await getTrustedKey(userId);
+      // const theirKey =
+      //   trusted?.publicKey ?? (await api.keys.keysFor(userId))[0]?.public_key;
+      // if (!theirKey) return;
 
-      const number = await computeSafetyNumber(
-        myKey,
-        theirKey,
-        String(me.id),
-        userId,
-      );
-      setSafetyNumber(number);
-      setIsVerified(!!trusted);
+      // const number = await computeSafetyNumber(
+      //   myKey,
+      //   theirKey,
+      //   String(me.id),
+      //   userId,
+      // );
+      // setSafetyNumber(number);
+      // setIsVerified(!!trusted);
 
       // QR для себя
       const qrPayload: QRPayload = {
-        userId: String(me.id),
-        username: me.username,
+        userId: String(profile.id),
+        username: profile.username,
         publicKey: myKey,
       };
       setMyQRData(JSON.stringify(qrPayload));
     })();
-  }, [userId, me]);
+  }, [userId, profile]);
 
   // Запуск сканера
   useEffect(() => {
@@ -95,7 +94,7 @@ export const SafetyNumberModal = ({
           async (result, error) => {
             if (!result) return;
 
-            if (!me) return;
+            if (!profile) return;
 
             try {
               const payload: QRPayload = JSON.parse(result.getText());
@@ -105,20 +104,20 @@ export const SafetyNumberModal = ({
                 return;
               }
 
-              await saveTrustedKey({
-                userId: payload.userId,
-                publicKey: payload.publicKey,
-                verifiedAt: Date.now(),
-              });
+              // await saveTrustedKey({
+              //   userId: payload.userId,
+              //   publicKey: payload.publicKey,
+              //   verifiedAt: Date.now(),
+              // });
 
               // Пересчитываем safety number по верифицированному ключу
-              const publicData = await getPublicData(me.id);
+              const publicData = await db.keys.getPublicData(profile.id);
               const myKey = publicData?.publicKey;
-              if (myKey && me) {
+              if (myKey && profile) {
                 const number = await computeSafetyNumber(
                   myKey,
                   payload.publicKey,
-                  String(me.id),
+                  String(profile.id),
                   userId,
                 );
                 setSafetyNumber(number);

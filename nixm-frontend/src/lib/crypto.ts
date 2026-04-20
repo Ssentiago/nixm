@@ -70,19 +70,19 @@ export async function initializeDevice() {
 
 export class NixmCrypto {
   myPrivateKeyBase64: string;
-  theirPublicKeyBase64: string;
+  peerPublicKeyBase64: string;
   aesKey: CryptoKey | null;
 
-  constructor(myPrivateKeyBase64: string, theirPublicKeyBase64: string) {
+  constructor(myPrivateKeyBase64: string, peerPublicKeyBase64: string) {
     this.myPrivateKeyBase64 = myPrivateKeyBase64;
-    this.theirPublicKeyBase64 = theirPublicKeyBase64;
+    this.peerPublicKeyBase64 = peerPublicKeyBase64;
     this.aesKey = null; // Здесь будет храниться общий симметричный ключ AES
   }
 
   async init() {
     // Преобразуем ключи из Base64 в ArrayBuffer
     const myPrivateRaw = base64ToArrayBuffer(this.myPrivateKeyBase64);
-    const theirPublicRaw = base64ToArrayBuffer(this.theirPublicKeyBase64);
+    const peerPublicRaw = base64ToArrayBuffer(this.peerPublicKeyBase64);
 
     const importedMyPrivateKey = await crypto.subtle.importKey(
       'pkcs8', // Формат приватного ключа (стандартный)
@@ -92,30 +92,28 @@ export class NixmCrypto {
       ['deriveBits'], // Разрешенное использование: для вывода бит (общего секрета)
     );
 
-    const importedTheirPublicKey = await crypto.subtle.importKey(
+    const importedPeerPublicKey = await crypto.subtle.importKey(
       'spki', // Формат публичного ключа (стандартный)
-      theirPublicRaw,
+      peerPublicRaw,
       { name: 'ECDH', namedCurve: 'P-256' },
       false, // Неэкспортируемый
       [], // Для публичного ключа в ECDH здесь специфические использования не нужны
     );
 
     const sharedBits = await crypto.subtle.deriveBits(
-      { name: 'ECDH', public: importedTheirPublicKey }, // Указываем публичный ключ собеседника
+      { name: 'ECDH', public: importedPeerPublicKey }, // Указываем публичный ключ собеседника
       importedMyPrivateKey, // Наш приватный ключ
       256, // Длина выводимого секрета в битах
     );
     const hashed = await crypto.subtle.digest('SHA-256', sharedBits);
 
-    const aesKey = await crypto.subtle.importKey(
+    this.aesKey = await crypto.subtle.importKey(
       'raw', // Формат "сырых" байт
       hashed, // Хешированный секрет
       { name: 'AES-GCM' }, // Алгоритм симметричного шифрования
       false, // Неэкспортируемый
       ['encrypt', 'decrypt'], // Разрешенные использования: шифрование и дешифрование
-    );
-
-    this.aesKey = aesKey; // ✅ ВАЖНО! Сохраняем полученный ключ AES
+    ); // ✅ ВАЖНО! Сохраняем полученный ключ AES
 
     return true;
   }

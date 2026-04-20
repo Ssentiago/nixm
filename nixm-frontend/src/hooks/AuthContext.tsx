@@ -7,6 +7,7 @@ import {
   useRef,
   SetStateAction,
   Dispatch,
+  useCallback,
 } from 'react';
 import { api } from '@/lib/api/api';
 import { ws } from '@/lib/websocket/service';
@@ -14,59 +15,50 @@ import { AccessToken, User } from '@/lib/api/modules/auth';
 
 interface AuthContextType {
   token: string | null;
-  setToken: Dispatch<SetStateAction<string | null>>;
   login: (token: string) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
-  me: User | null;
-  setMe: Dispatch<SetStateAction<User | null>>;
-  myDeviceId: string | null;
-  setMyDeviceId: Dispatch<SetStateAction<string | null>>;
+  myProfile: User | null;
+  setMyProfile: Dispatch<SetStateAction<User | null>>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
-
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [me, setMe] = useState<null | User>(null);
-  const tokenRef = useRef<string | null>(null);
-  const [myDeviceId, setMyDeviceId] = useState<string | null>(null);
-  const myDeviceIdRef = useRef<string | null>(null);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+const useProfile = (token: string | null) => {
+  const [myProfile, setMyProfile] = useState<User | null>(null);
   useEffect(() => {
-    myDeviceIdRef.current = myDeviceId;
-    console.log(`Device id: ${myDeviceId}`);
-  }, [myDeviceId]);
-  const refreshPromiseRef = useRef<Promise<AccessToken> | null>(null);
-
-  useEffect(() => {
-    tokenRef.current = token;
+    if (!token) {
+      setMyProfile(null);
+      return;
+    }
+    (async () => {
+      try {
+        const me = await api.auth.me();
+        setMyProfile(me);
+      } catch {
+        setMyProfile(null);
+      }
+    })();
   }, [token]);
 
-  useEffect(() => {
-    myDeviceIdRef.current = myDeviceId;
-  }, [myDeviceId]);
+  return { myProfile, setMyProfile };
+};
+
+const useSession = () => {
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refreshPromiseRef = useRef<Promise<AccessToken> | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefreshRef = useRef<(expiresIn: number) => void>();
 
   useEffect(() => {
     api.setToken(token);
   }, [token]);
 
-  useEffect(() => {
-    if (token && myDeviceId) {
-      ws.connect(
-        () => tokenRef.current, // реф, всегда свежий
-        () => myDeviceIdRef.current, // тоже реф
-      );
-    } else {
-      ws.disconnect();
-    }
-  }, [token, myDeviceId]);
-  const updateAccessToken = async () => {
+  const updateAccessToken = useCallback(async () => {
     try {
       setIsLoading(true);
+
       if (!refreshPromiseRef.current) {
         refreshPromiseRef.current = api.auth.updateAccessToken();
       }
@@ -74,78 +66,68 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const data = await refreshPromiseRef.current;
 
       if (!data.access_token) {
-        console.error('No access token');
+        console.error('[Auth] No access token in response');
         return;
       }
 
       setToken(data.access_token);
-      scheduleRefresh(data.expires_in);
-      return data.access_token;
-    } catch (e) {
+      scheduleRefreshRef.current?.(data.expires_in);
+    } catch {
       setToken(null);
     } finally {
       setIsLoading(false);
       refreshPromiseRef.current = null;
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    if (!token) {
-      setMe(null);
-      return;
-    }
-    (async () => {
-      try {
-        const me = await api.auth.me();
-        setMe(me);
-      } catch {
-        setMe(null);
-      }
-    })();
-  }, [token]);
-
-  const scheduleRefresh = (expiresIn: number) => {
+  scheduleRefreshRef.current = (expiresIn: number) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
 
-    const delay = (expiresIn - 5) * 1000; // за 5 сек до истечения
+    const delay = (expiresIn - 5) * 1000;
+
     if (delay <= 0) {
       updateAccessToken();
       return;
     }
 
-    refreshTimerRef.current = setTimeout(() => {
-      updateAccessToken();
-    }, delay);
+    refreshTimerRef.current = setTimeout(() => updateAccessToken(), delay);
   };
 
   useEffect(() => {
     updateAccessToken();
+
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
   }, []);
 
-  const login = (token: string) => {
-    console.log('login called, token:', token);
-    setToken(token);
-  };
+  const login = (token: string) => setToken(token);
 
   const logout = async () => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     setToken(null);
     await api.auth.logout();
-    ws.disconnect();
   };
+
+  return { token, isLoading, isAuthenticated: !!token, login, logout };
+};
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const { token, isLoading, isAuthenticated, logout, login } = useSession();
+  const { myProfile, setMyProfile } = useProfile(token);
 
   return (
     <AuthContext.Provider
       value={{
         token,
-        setToken,
         login,
         logout,
-        isAuthenticated: !!token,
+        isAuthenticated,
         isLoading,
-        me,
-        setMe,
-        myDeviceId,
-        setMyDeviceId,
+        myProfile,
+        setMyProfile,
       }}
     >
       {children}

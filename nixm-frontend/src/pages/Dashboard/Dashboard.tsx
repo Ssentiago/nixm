@@ -12,7 +12,7 @@ import { useNotifications } from '@/hooks/NotificationContext';
 
 const Dashboard = () => {
   const [overlayOpen, setOverlayOpen] = useState(false);
-  const { me } = useAuth();
+  const { profile } = useAuth();
   const { chats, currentChatId, openChat, handleIncomingMessage } =
     useChatContext();
   const { addNotification } = useNotifications();
@@ -54,7 +54,7 @@ const Dashboard = () => {
 
       {activeChat ? (
         <ChatView
-          userId={activeChat.userId}
+          userId={activeChat.peerId}
           username={activeChat.username}
           onOpenOverlay={() => setOverlayOpen(true)}
         />

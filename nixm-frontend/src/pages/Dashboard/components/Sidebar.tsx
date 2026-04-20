@@ -24,7 +24,7 @@ export const Sidebar = ({
     : chats;
   const { notifications } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
-  const { me } = useAuth();
+  const { profile } = useAuth();
   const [openSettings, setOpenSettings] = useState(false);
 
   return (
@@ -64,16 +64,16 @@ export const Sidebar = ({
           <div className='flex items-center gap-2'>
             <Avatar className='w-6 h-6'>
               <AvatarImage
-                src={`http://localhost:5900${me?.avatar_url}`}
-                alt={me?.username}
+                src={`http://localhost:5900${profile?.avatar_url}`}
+                alt={profile?.username}
                 className='object-cover rounded-full'
               />
               <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono'>
-                {me?.username?.[0]?.toUpperCase() ?? '?'}
+                {profile?.username?.[0]?.toUpperCase() ?? '?'}
               </AvatarFallback>
             </Avatar>
             <span className='text-xs font-mono text-muted-foreground'>
-              {me?.username ?? 'unknown'}
+              {profile?.username ?? 'unknown'}
             </span>
             <div className='ml-auto flex items-center gap-1'>
               <button

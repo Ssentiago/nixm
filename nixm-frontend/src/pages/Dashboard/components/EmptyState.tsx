@@ -18,7 +18,7 @@ export const EmptyState = () => {
   const [profile, setProfile] = useState<User | null>(null);
   const [requested, setRequested] = useState(false);
   const [isDeclined, setIsDeclined] = useState(false);
-  const { me } = useAuth();
+  const { profile } = useAuth();
 
   const { openChat } = useChatContext();
 
@@ -27,7 +27,7 @@ export const EmptyState = () => {
     if (!profile) return;
 
     const unsub = ws.on('message', async msg => {
-      if (!me) return;
+      if (!profile) return;
       console.log(JSON.stringify(msg));
       if (!('from' in msg)) {
         return;
@@ -45,7 +45,7 @@ export const EmptyState = () => {
             await saveMessage({
               messageId: `system-${profile.id}-${Date.now()}`,
               from: String(profile.id),
-              to: String(me?.id),
+              to: String(profile?.id),
               peerId: String(profile.id),
               direction: 'received',
               ciphertext: 'Session Established',
