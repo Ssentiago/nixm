@@ -1,71 +1,25 @@
-import { useChatContext } from '@/hooks/ChatContext';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api, ApiError } from '@/lib/api/api';
 import { User } from '@/lib/api/modules/auth';
 import { ws } from '@/lib/websocket/service';
-import { useAuth } from '@/hooks/AuthContext';
-import {
-  MSG_CHAT_ACCEPTED,
-  MSG_CHAT_DECLINED,
-  MSG_CHAT_REQUEST,
-  MSG_DATA,
-} from '@/lib/websocket/typing/definitions';
-import { wsRouter } from '@/lib/websocket/router';
-import { db } from '@/lib/db';
-import { logger } from '@/lib/logger';
+import { MSG_CHAT_REQUEST } from '@/lib/websocket/typing/definitions';
 
-export const EmptyState = () => {
+interface Props {
+  onPeerResolved: (peer: { id: number; username: string } | null) => void;
+  isDeclined: boolean;
+  onDeclinedReset: () => void;
+}
+
+export const EmptyState = ({
+  onPeerResolved,
+  isDeclined,
+  onDeclinedReset,
+}: Props) => {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [peerProfile, setPeerProfile] = useState<User | null>(null);
   const [requested, setRequested] = useState(false);
-  const [isDeclined, setIsDeclined] = useState(false);
-  const { myProfile } = useAuth();
-
-  const { openChat } = useChatContext();
-
-  useEffect(() => {
-    if (!myProfile) return;
-    if (!peerProfile) return;
-
-    const unsubAccepted = wsRouter.on(MSG_CHAT_ACCEPTED, async msg => {
-      if (!myProfile) return;
-      if (Number(msg.from) !== Number(myProfile.id)) return;
-
-      setRequested(false);
-      try {
-        await db.messages.save({
-          messageId: `system-${myProfile.id}-${Date.now()}`,
-          from: String(myProfile.id),
-          to: String(myProfile.id),
-          peerId: String(myProfile.id),
-          direction: 'received',
-          ciphertext: 'Session Established',
-          iv: '',
-          timestamp: Date.now(),
-          status: 'delivered',
-          system: true,
-        });
-      } catch (e) {
-        logger.warn('Failed to save system message', { error: String(e) });
-      }
-      await openChat(myProfile.id, myProfile.username);
-    });
-
-    const unsubDeclined = wsRouter.on(MSG_CHAT_DECLINED, async msg => {
-      if (!myProfile) return;
-      if (Number(msg.from) !== Number(myProfile.id)) return;
-
-      setIsDeclined(true);
-      setRequested(false);
-    });
-
-    return () => {
-      unsubAccepted();
-      unsubDeclined();
-    };
-  }, [myProfile, openChat]);
 
   const handleResolve = async () => {
     const trimmed = code.trim();
@@ -75,11 +29,13 @@ export const EmptyState = () => {
     setError('');
     setPeerProfile(null);
     setRequested(false);
-    setIsDeclined(false);
+    onPeerResolved(null);
+    onDeclinedReset();
 
     try {
       const user = await api.invites.resolve(trimmed);
       setPeerProfile(user);
+      onPeerResolved({ id: Number(user.id), username: user.username });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Invalid invite code');
     } finally {
@@ -89,18 +45,18 @@ export const EmptyState = () => {
 
   const handleRequest = () => {
     if (!peerProfile) return;
-    // Отправляем запрос через сокет
     ws.send({ type: MSG_CHAT_REQUEST, to: Number(peerProfile.id) });
     setRequested(true);
-    setIsDeclined(false);
+    onDeclinedReset();
   };
 
   const reset = () => {
     setPeerProfile(null);
     setCode('');
     setError('');
-    setIsDeclined(false);
     setRequested(false);
+    onPeerResolved(null);
+    onDeclinedReset();
   };
 
   return (
@@ -138,7 +94,6 @@ export const EmptyState = () => {
         </>
       ) : (
         <div className='w-full max-w-xs flex flex-col items-center gap-4'>
-          {/* Аватарка */}
           <div className='w-20 h-20 rounded-full overflow-hidden bg-secondary border border-border flex items-center justify-center'>
             {peerProfile.avatar_url ? (
               <img
@@ -153,7 +108,6 @@ export const EmptyState = () => {
             )}
           </div>
 
-          {/* Имя и Био */}
           <div className='text-center'>
             <p className='text-sm font-mono text-foreground'>
               {peerProfile.username}
@@ -165,7 +119,6 @@ export const EmptyState = () => {
             )}
           </div>
 
-          {/* Стейты кнопок */}
           <div className='w-full mt-2'>
             {isDeclined ? (
               <div className='flex flex-col items-center gap-2'>

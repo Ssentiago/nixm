@@ -36,6 +36,7 @@ export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
         timestamp: Date.now(),
         status: 'delivered',
         system: true,
+        senderDeviceId: '',
       });
       addChat(String(from), fromUsername);
     } catch (e) {

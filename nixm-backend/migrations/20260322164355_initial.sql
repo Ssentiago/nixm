@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS users
     avatar_url    TEXT
 );
 
-
+INSERT INTO users (id, username, password_hash)
+VALUES (0, 'system', '');
+SELECT setval('users_id_seq', 1, false); -- следующий будет 1
 
 
