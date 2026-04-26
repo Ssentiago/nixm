@@ -2,7 +2,7 @@ use crate::state::AppState;
 use std::time::Instant;
 
 // cleanup/mod.rs
-pub async fn main(state: AppState) {
+pub async fn remove_dead_connections(state: AppState) {
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
 

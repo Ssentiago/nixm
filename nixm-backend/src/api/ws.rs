@@ -1,7 +1,6 @@
 use crate::db;
 use crate::db::messages::MessagePayload;
 use crate::state::{AppState, WsSender};
-use crate::tokens::decode_access_token;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
@@ -29,6 +28,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> 
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
+// TODO: переписать на событийную систему
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
     println!("handle_socket started");
 
@@ -58,7 +58,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
             let (token, device_id) = parsed;
 
-            match decode_access_token(&token) {
+            match state.token_service.decode_access_token(&token) {
                 Ok(claims) => match claims.sub.parse::<i64>() {
                     Ok(id) => {
                         println!("token valid, user_id={id}, device_id={device_id}");
@@ -107,7 +107,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             (user_id, device_id.clone()),
             WsSender {
                 sender: tx,
-                last_keepalive: last_keepalive,
+                last_keepalive,
             },
         );
     }

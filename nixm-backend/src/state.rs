@@ -1,4 +1,4 @@
-use crate::tokens::TokenService;
+use crate::service::tokens::TokenService;
 use sqlx::PgPool;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
