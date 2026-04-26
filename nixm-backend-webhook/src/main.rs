@@ -99,7 +99,6 @@ async fn wait_for_assets(
             .await?;
 
         let assets: Vec<String> = release.assets.iter().map(|a| a.name.clone()).collect();
-
         info!("Polling assets: {:?}", assets);
 
         if expected.iter().all(|name| assets.iter().any(|a| a == name)) {
@@ -151,6 +150,99 @@ struct ReleaseInfo {
     tag_name: String,
 }
 
+async fn deploy(state: Arc<AppState>, tag: String) -> anyhow::Result<()> {
+    let temp_dir = std::env::current_exe()?
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot get exe dir"))?
+        .join("temp");
+
+    if temp_dir.exists() {
+        info!("Removing old temp dir");
+        fs::remove_dir_all(&temp_dir)?;
+    }
+    fs::create_dir_all(&temp_dir)?;
+
+    info!("Waiting for assets...");
+    let expected = ["dist.zip", "nixm-backend"];
+    wait_for_assets(
+        &state.octocrab,
+        &state.config.repo_owner,
+        &state.config.repo_name,
+        &tag,
+        &expected,
+        Duration::from_secs(120),
+    )
+    .await?;
+
+    let release = state
+        .octocrab
+        .repos(&state.config.repo_owner, &state.config.repo_name)
+        .releases()
+        .get_by_tag(&tag)
+        .await?;
+
+    for asset in &release.assets {
+        let dest = temp_dir.join(&asset.name);
+        let url = asset.browser_download_url.to_string();
+        download_asset(&url, &dest).await?;
+    }
+
+    let dist = temp_dir.join("dist.zip");
+    let binary = temp_dir.join("nixm-backend");
+
+    if !dist.exists() || !binary.exists() {
+        return Err(anyhow::anyhow!(
+            "Critical assets missing: dist.zip={}, nixm-backend={}",
+            dist.exists(),
+            binary.exists()
+        ));
+    }
+
+    info!("Stopping nixm.service...");
+    if let Err(e) = systemctl("stop", "nixm.service") {
+        warn!("Stop failed (continuing anyway): {e}");
+    }
+
+    let server_path = &state.config.server_path;
+    if !server_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Server dir not found: {}",
+            server_path.display()
+        ));
+    }
+
+    let dest_dist = server_path.join("dist");
+    let dest_bin = server_path.join("nixm-backend");
+
+    if dest_dist.exists() {
+        fs::remove_dir_all(&dest_dist)?;
+    }
+    if dest_bin.exists() {
+        fs::remove_file(&dest_bin)?;
+    }
+
+    info!("Extracting dist.zip...");
+    let zip_file = fs::File::open(&dist)?;
+    let mut archive = zip::ZipArchive::new(zip_file)?;
+    archive.extract(&dest_dist)?;
+    info!("Extraction done");
+
+    info!("Moving binary...");
+    fs::copy(&binary, &dest_bin)?;
+    if let Err(e) = fs::set_permissions(&dest_bin, fs::Permissions::from_mode(0o755)) {
+        warn!("Failed to chmod binary: {e}");
+    }
+
+    fs::remove_dir_all(&temp_dir)?;
+    info!("Temp dir cleaned");
+
+    info!("Starting nixm.service...");
+    systemctl("start", "nixm.service")?;
+
+    info!("Deployment completed successfully");
+    Ok(())
+}
+
 async fn release_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -182,146 +274,21 @@ async fn release_webhook(
         }
     };
 
-    let action = &payload.action;
-    info!("Action: {action}");
+    info!("Action: {}", payload.action);
 
-    if action != "released" {
+    if payload.action != "released" {
         info!("Not a 'released' action, ignoring");
         return StatusCode::OK;
     }
 
-    let tag = &payload.release.tag_name;
-    info!("Release tag: {tag}");
+    info!("Release tag: {}", payload.release.tag_name);
 
-    let temp_dir = std::env::current_exe()
-        .expect("Cannot get current exe path")
-        .parent()
-        .expect("Cannot get exe dir")
-        .join("temp");
-
-    if temp_dir.exists() {
-        info!("Removing old temp dir");
-        let _ = fs::remove_dir_all(&temp_dir);
-    }
-    if let Err(e) = fs::create_dir_all(&temp_dir) {
-        error!("Failed to create temp dir: {e}");
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-
-    info!("Waiting for assets...");
-    let expected = ["dist.zip", "nixm-backend"];
-    if let Err(e) = wait_for_assets(
-        &state.octocrab,
-        &state.config.repo_owner,
-        &state.config.repo_name,
-        tag,
-        &expected,
-        Duration::from_secs(120),
-    )
-    .await
-    {
-        error!("Asset wait failed: {e}");
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-
-    let release = match state
-        .octocrab
-        .repos(&state.config.repo_owner, &state.config.repo_name)
-        .releases()
-        .get_by_tag(tag)
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            error!("Failed to get release: {e}");
-            return StatusCode::INTERNAL_SERVER_ERROR;
+    tokio::spawn(async move {
+        if let Err(e) = deploy(state, payload.release.tag_name).await {
+            error!("Deployment failed: {e}");
         }
-    };
+    });
 
-    for asset in &release.assets {
-        let dest = temp_dir.join(&asset.name);
-        let url = asset.browser_download_url.to_string();
-        if let Err(e) = download_asset(&url, &dest).await {
-            error!("Failed to download {}: {e}", asset.name);
-        }
-    }
-
-    let dist = temp_dir.join("dist.zip");
-    let binary = temp_dir.join("nixm-backend");
-
-    if !dist.exists() || !binary.exists() {
-        error!(
-            "Critical assets missing: dist.zip={}, nixm-backend={}",
-            dist.exists(),
-            binary.exists()
-        );
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-
-    info!("Stopping nixm.service...");
-    if let Err(e) = systemctl("stop", "nixm.service") {
-        warn!("Stop failed (continuing anyway): {e}");
-    }
-
-    let server_path = &state.config.server_path;
-    if !server_path.exists() {
-        error!("Server dir not found: {}", server_path.display());
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-
-    let dest_dist = server_path.join("dist");
-    let dest_bin = server_path.join("nixm-backend");
-
-    if dest_dist.exists() {
-        let _ = fs::remove_dir_all(&dest_dist);
-    }
-    if dest_bin.exists() {
-        let _ = fs::remove_file(&dest_bin);
-    }
-
-    // --- extract dist.zip ---
-    info!("Extracting dist.zip...");
-    let zip_file = match fs::File::open(&dist) {
-        Ok(f) => f,
-        Err(e) => {
-            error!("Cannot open dist.zip: {e}");
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
-    };
-
-    let mut archive = match zip::ZipArchive::new(zip_file) {
-        Ok(a) => a,
-        Err(e) => {
-            error!("Invalid zip: {e}");
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
-    };
-
-    if let Err(e) = archive.extract(&dest_dist) {
-        error!("Extraction failed: {e}");
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-    info!("Extraction done");
-
-    info!("Moving binary...");
-    if let Err(e) = fs::copy(&binary, &dest_bin) {
-        error!("Failed to copy binary: {e}");
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-    if let Err(e) = fs::set_permissions(&dest_bin, fs::Permissions::from_mode(0o755)) {
-        warn!("Failed to chmod binary: {e}");
-    }
-
-    let _ = fs::remove_dir_all(&temp_dir);
-    info!("Temp dir cleaned");
-
-    info!("Starting nixm.service...");
-    if let Err(e) = systemctl("start", "nixm.service") {
-        error!("Start failed: {e}");
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-
-    info!("Deployment completed successfully");
     StatusCode::OK
 }
 
@@ -331,8 +298,7 @@ async fn main() {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "trace".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -350,7 +316,6 @@ async fn main() {
         .with_state(state);
 
     let bind_addr = format!("127.0.0.1:{port}");
-
     info!("Starting webhook server on {bind_addr}");
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
