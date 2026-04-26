@@ -244,7 +244,7 @@ async fn release_webhook(
     for asset in &release.assets {
         let dest = temp_dir.join(&asset.name);
         let url = asset.browser_download_url.to_string();
-        if let Err(e) = download_asset(&url, &dest) {
+        if let Err(e) = download_asset(&url, &dest).await {
             error!("Failed to download {}: {e}", asset.name);
         }
     }
