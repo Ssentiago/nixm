@@ -21,7 +21,6 @@ type HmacSha256 = Hmac<Sha256>;
 
 struct Config {
     webhook_secret: String,
-    github_token: String,
     repo_owner: String,
     repo_name: String,
     server_path: PathBuf,
@@ -39,7 +38,6 @@ impl Config {
 
         Self {
             webhook_secret,
-            github_token,
             repo_owner,
             repo_name,
             server_path,
