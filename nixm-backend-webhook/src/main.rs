@@ -31,7 +31,6 @@ struct Config {
 impl Config {
     fn from_env() -> Self {
         let webhook_secret = std::env::var("WEBHOOK_SECRET").expect("WEBHOOK_SECRET is not set");
-        let github_token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN is not set");
         let repo_owner = std::env::var("REPO_OWNER").unwrap_or_else(|_| "Ssentiago".into());
         let repo_name = std::env::var("REPO_NAME").unwrap_or_else(|_| "Nixm".into());
         let server_path =
@@ -343,7 +342,6 @@ async fn main() {
     let port = config.port.clone();
 
     let octocrab = Octocrab::builder()
-        .personal_token(config.github_token.clone())
         .build()
         .expect("Failed to build Octocrab");
 
