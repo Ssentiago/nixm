@@ -321,7 +321,13 @@ async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoRespo
         let _ = db::refresh_tokens::revoke(&state.pool, user_id, jti).await;
     }
 
-    let cookie = "refresh_token=; HttpOnly; Path=/api/auth/refresh; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    let is_dev = std::env::var("DEV").ok().is_some();
+
+    let cookie = if is_dev {
+        "refresh_token=; HttpOnly; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+    } else {
+        "refresh_token=; HttpOnly; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; SameSite=Strict"
+    };
 
     (
         StatusCode::OK,
@@ -400,10 +406,19 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
 
-            let cookie = format!(
-                "refresh_token={}; HttpOnly; Path=/; Max-Age=604800",
-                pair.refresh_token
-            );
+            let is_dev = std::env::var("DEV").ok().is_some();
+
+            let cookie = if is_dev {
+                format!(
+                    "refresh_token={}; HttpOnly; Path=/; Max-Age=604800",
+                    pair.refresh_token
+                )
+            } else {
+                format!(
+                    "refresh_token={}; HttpOnly; Path=/; Max-Age=604800; Secure; SameSite=Strict",
+                    pair.refresh_token
+                )
+            };
             (
                 StatusCode::OK,
                 [(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())],

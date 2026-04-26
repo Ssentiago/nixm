@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/AuthContext';
 import { api, ApiError } from '@/lib/api/api';
+import { API_BASE } from '@/lib/env';
 
 export const AvatarSection = () => {
   const { myProfile, setMyProfile } = useAuth();
@@ -14,7 +15,7 @@ export const AvatarSection = () => {
     console.log(JSON.stringify(myProfile));
   }, [myProfile]);
 
-  const avatarUrl = `http://localhost:5900${myProfile?.avatar_url}`;
+  const avatarUrl = `${API_BASE}${myProfile?.avatar_url}`;
   const initials = myProfile?.username?.[0]?.toUpperCase() ?? '?';
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {

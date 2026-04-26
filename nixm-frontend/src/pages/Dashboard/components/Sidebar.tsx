@@ -8,6 +8,7 @@ import { Settings } from './Settings/Settings';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useNotifications } from '@/hooks/NotificationContext';
 import { NotificationsPanel } from '@/pages/Dashboard/components/NotificationsPanel';
+import { API_BASE } from '@/lib/env';
 
 export const Sidebar = ({
   chats,
@@ -64,7 +65,7 @@ export const Sidebar = ({
           <div className='flex items-center gap-2'>
             <Avatar className='w-6 h-6'>
               <AvatarImage
-                src={`http://localhost:5900${myProfile?.avatar_url}`}
+                src={`${API_BASE}${myProfile?.avatar_url}`}
                 alt={myProfile?.username}
                 className='object-cover rounded-full'
               />

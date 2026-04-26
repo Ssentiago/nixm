@@ -25,7 +25,7 @@ struct Config {
     repo_owner: String,
     repo_name: String,
     server_path: PathBuf,
-    bind_addr: String,
+    port: String,
 }
 
 impl Config {
@@ -36,7 +36,7 @@ impl Config {
         let repo_name = std::env::var("REPO_NAME").unwrap_or_else(|_| "Nixm".into());
         let server_path =
             PathBuf::from(std::env::var("SERVER_PATH").unwrap_or_else(|_| "../nixm".into()));
-        let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8000".into());
+        let port = std::env::var("BIND_ADDR").unwrap_or_else(|_| "8000".into());
 
         Self {
             webhook_secret,
@@ -44,7 +44,7 @@ impl Config {
             repo_owner,
             repo_name,
             server_path,
-            bind_addr,
+            port,
         }
     }
 }
@@ -118,9 +118,6 @@ async fn wait_for_assets(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Download asset
-// ---------------------------------------------------------------------------
 
 fn download_asset(url: &str, dest: &Path) -> anyhow::Result<()> {
     info!("Downloading: {url} -> {}", dest.display());
@@ -228,7 +225,7 @@ async fn release_webhook(
         &expected,
         Duration::from_secs(120),
     )
-    .await
+        .await
     {
         error!("Asset wait failed: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR;
@@ -347,7 +344,7 @@ async fn main() {
         .init();
 
     let config = Config::from_env();
-    let bind_addr = config.bind_addr.clone();
+    let port = config.port.clone();
 
     let octocrab = Octocrab::builder()
         .personal_token(config.github_token.clone())
@@ -359,6 +356,8 @@ async fn main() {
     let app = Router::new()
         .route("/release-webhook", post(release_webhook))
         .with_state(state);
+
+    let bind_addr = format!("127.0.0.1:{port}");
 
     info!("Starting webhook server on {bind_addr}");
 

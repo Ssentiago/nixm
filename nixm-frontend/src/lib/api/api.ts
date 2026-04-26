@@ -5,6 +5,7 @@ import { InvitesModule } from '@/lib/api/modules/inviteLinks';
 import { MessagesModule } from '@/lib/api/modules/messages';
 import { UsersModule } from '@/lib/api/modules/users';
 import { logger } from '@/lib/logger';
+import { API_BASE } from '@/lib/env';
 
 export class ApiError extends Error {
   constructor(
@@ -58,7 +59,7 @@ class Api implements ApiClient {
   async request<T>(path: string, options?: RequestInit): Promise<T> {
     let url;
     try {
-      url = new URL(`${this.API_PREFIX}${path}`, 'http://localhost:5900');
+      url = new URL(`${this.API_PREFIX}${path}`, API_BASE);
     } catch (e) {
       logger.error('API: invalid path construction', {
         path,
