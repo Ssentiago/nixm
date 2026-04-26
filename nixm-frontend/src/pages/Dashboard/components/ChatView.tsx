@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useChatContext } from '@/hooks/ChatContext';
-import { SafetyNumberModal } from '@/pages/Dashboard/components/SafetyNumberModal';
 
 export const ChatView = ({
   userId,
@@ -15,7 +14,6 @@ export const ChatView = ({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
   const { activeMessages, sendMessage, loadMoreHistory } = useChatContext();
-  const [showSafetyNumber, setShowSafetyNumber] = useState(false);
 
   // Автопрокрутка вниз при новых сообщениях
   useEffect(() => {
@@ -54,27 +52,12 @@ export const ChatView = ({
 
         <div className='flex items-center gap-2'>
           <button
-            onClick={() => setShowSafetyNumber(true)}
-            className='p-1.5 text-muted-foreground/60 hover:text-emerald-500 transition-colors border border-border rounded bg-muted/30'
-            title='Verify End-to-End Encryption'
-          >
-            <span className='text-[10px]'>🔒</span>
-          </button>
-          <button
             onClick={onOpenOverlay}
             className='text-[10px] font-mono text-muted-foreground/60 hover:text-foreground transition-colors border border-border px-2 py-1 rounded bg-muted/30'
           >
             chats ↗
           </button>
         </div>
-
-        {showSafetyNumber && (
-          <SafetyNumberModal
-            username={username}
-            userId={userId}
-            onClose={() => setShowSafetyNumber(false)}
-          />
-        )}
       </div>
 
       {/* Messages Area */}

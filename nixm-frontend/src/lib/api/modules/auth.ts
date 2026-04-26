@@ -5,13 +5,6 @@ export interface AccessToken {
   expires_in: number;
 }
 
-export interface User {
-  id: string;
-  username: string;
-  bio: string;
-  avatar_url: string;
-}
-
 export class AuthModule {
   constructor(private api: ApiClient) {}
 
@@ -44,10 +37,6 @@ export class AuthModule {
       method: 'POST',
       credentials: 'include',
     });
-  }
-
-  me() {
-    return this.api.request<User>('/auth/me');
   }
 
   updateAccessToken() {

@@ -1,13 +1,18 @@
-use crate::tokens::decode_access_token;
+use crate::state::AppState;
+use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::{
     extract::Request,
     http::{StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::Response,
-}; // Твой хелпер
+};
 
-pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, StatusCode> {
+pub async fn auth_middleware(
+    State(state): State<AppState>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
     let auth_header = req
         .headers()
         .get(AUTHORIZATION)
@@ -18,7 +23,10 @@ pub async fn auth_middleware(mut req: Request, next: Next) -> Result<Response, S
         .strip_prefix("Bearer ")
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let claims = decode_access_token(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims = state
+        .token_service
+        .decode_access_token(token)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     if claims.exp < chrono::Utc::now().timestamp() as usize {
         return Err(StatusCode::UNAUTHORIZED);

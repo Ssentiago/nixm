@@ -1,3 +1,4 @@
+use crate::tokens::TokenService;
 use sqlx::PgPool;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
@@ -12,5 +13,6 @@ pub struct WsSender {
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub(crate) token_service: Arc<TokenService>,
     pub connections: Arc<RwLock<HashMap<(i64, String), WsSender>>>,
 }

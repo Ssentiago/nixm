@@ -30,4 +30,8 @@ export class UsersModule {
       // Content-Type не ставим — браузер сам выставит multipart с boundary
     });
   }
+
+  me() {
+    return this.api.request<User>('/auth/me');
+  }
 }

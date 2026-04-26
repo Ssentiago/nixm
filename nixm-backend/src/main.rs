@@ -8,6 +8,7 @@ pub mod tokens;
 
 use crate::api::{auth, invite_links, keys, messages, users, ws};
 use crate::state::AppState;
+use crate::tokens::TokenService;
 use axum::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::{HeaderValue, Method, header};
 use axum::{Router, ServiceExt, routing::get};
@@ -27,6 +28,10 @@ use tracing_subscriber;
 async fn main() {
     dotenvy::dotenv().ok();
 
+    let jwt_secret = env::var("JWT_SECRET")
+        .expect("JWT_SECRET environment variable must be set")
+        .into_bytes();
+
     let is_dev = std::env::var("DEV").ok().is_some();
     let dev_frontend_dir = "../nixm-frontend/dist";
 
@@ -43,6 +48,7 @@ async fn main() {
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
     let state = AppState {
         pool,
+        token_service: Arc::new(TokenService { secret: jwt_secret }),
         connections: Arc::new(RwLock::new(HashMap::new())),
     };
 
@@ -53,7 +59,7 @@ async fn main() {
 
     let backend_port = std::env::var("BACKEND_PORT").unwrap_or("3000".to_string());
     let mut app = Router::new()
-        .nest("/api/auth", auth::router())
+        .nest("/api/auth", auth::router(state.clone()))
         .nest("/api/keys", keys::router())
         .nest("/api/invites", invite_links::router())
         .nest("/api/users", users::router())

@@ -61,10 +61,13 @@ async fn keys(State(state): State<AppState>, Path(user_id): Path<i64>) -> impl I
     };
 }
 
-pub fn router() -> Router<AppState> {
+pub fn router(state: AppState) -> Router<AppState> {
     let protected = Router::new()
         .route("/upload", post(upload))
         .route("/{user_id}", get(keys))
-        .layer(middleware::from_fn(auth_middleware));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
     Router::new().merge(protected)
 }

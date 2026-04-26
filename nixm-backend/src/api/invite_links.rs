@@ -151,13 +151,16 @@ async fn resolve(State(state): State<AppState>, Path(code): Path<String>) -> imp
     (StatusCode::OK, Json(json!(response))).into_response()
 }
 
-pub fn router() -> Router<AppState> {
+pub fn router(state: AppState) -> Router<AppState> {
     let protected = Router::new()
         .route("/", post(create_invite).get(get_user_invites))
         .route("/resolve/{code}", get(resolve))
         .route("/{id}/revoke", post(revoke_invite))
         .route("/{id}", delete(delete_invite))
-        .layer(middleware::from_fn(auth_middleware));
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
 
     Router::new().merge(protected)
 }

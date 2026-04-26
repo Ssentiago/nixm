@@ -1,4 +1,4 @@
-import { User } from '@/lib/api/modules/auth';
+import { User } from '@/lib/api/modules/users';
 
 export interface CreateInviteRequest {
   invite_type: 'one-time' | 'timed';

@@ -11,8 +11,9 @@ import {
 } from 'react';
 import { api } from '@/lib/api/api';
 import { ws } from '@/lib/websocket/service';
-import { AccessToken, User } from '@/lib/api/modules/auth';
+import { AccessToken } from '@/lib/api/modules/auth';
 import { logger } from '@/lib/logger';
+import { User } from '@/lib/api/modules/users';
 
 interface AuthContextType {
   token: string | null;
@@ -36,7 +37,7 @@ const useProfile = (token: string | null) => {
     (async () => {
       logger.debug('Auth: fetching user profile');
       try {
-        const me = await api.auth.me();
+        const me = await api.users.me();
         logger.info('Auth: profile loaded', { username: me.username });
         setMyProfile(me);
       } catch (e) {

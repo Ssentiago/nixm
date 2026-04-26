@@ -3,8 +3,7 @@ use crate::middleware::auth::auth_middleware;
 use crate::models::refresh_token::RefreshToken;
 use crate::models::user::UserResponse;
 use crate::state::AppState;
-use crate::tokens::{RefreshClaims, decode_refresh_token};
-use crate::tokens::{issue_tokens, refresh_access_token};
+use crate::tokens::RefreshClaims;
 use axum::extract::ConnectInfo;
 use axum::http::header::USER_AGENT;
 use axum::http::{HeaderMap, StatusCode};
@@ -229,7 +228,7 @@ async fn sign_in(
     }
 
     // 3. Генерация токенов
-    let token_pair = match issue_tokens(&user.id.to_string()) {
+    let token_pair = match state.token_service.issue_pair(&user.id.to_string()) {
         Ok(pair) => pair,
         Err(e) => {
             eprintln!("Token generation error: {:?}", e);
@@ -238,7 +237,10 @@ async fn sign_in(
     };
 
     // 4. Декодирование refresh токена для получения JTI
-    let refresh_claim = match decode_refresh_token(&token_pair.refresh_token) {
+    let refresh_claim = match state
+        .token_service
+        .decode_refresh_token(&token_pair.refresh_token)
+    {
         Ok(claim) => claim,
         Err(e) => {
             eprintln!("Refresh token decode error: {:?}", e);
@@ -328,33 +330,6 @@ async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoRespo
         .into_response()
 }
 
-async fn me(
-    State(state): State<AppState>,
-    Extension(user_id): Extension<String>,
-) -> impl IntoResponse {
-    let uid: i64 = match user_id.parse() {
-        Ok(id) => id,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    };
-
-    let user = match db::users::find_by_id(&state.pool, uid).await {
-        Ok(user) => user,
-        Err(e) => {
-            eprintln!("DB Error finding user: {:?}", e);
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    };
-
-    let user = match user {
-        Some(u) => u,
-        None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
-    };
-
-    let response_data = UserResponse::from(user);
-
-    (StatusCode::OK, Json(json!(response_data))).into_response()
-}
-
 pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> Response {
     let refresh_token = match jar.get("refresh_token") {
         Some(c) => c.value().to_string(),
@@ -402,9 +377,12 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
         }
     }
 
-    match issue_tokens(&user_id.to_string()) {
+    match state.token_service.issue_pair(&user_id.to_string()) {
         Ok(pair) => {
-            let new_claims = decode_refresh_token(&pair.refresh_token).unwrap();
+            let new_claims = state
+                .token_service
+                .decode_refresh_token(&pair.refresh_token)
+                .unwrap();
 
             let new_token = RefreshToken {
                 id: None,
@@ -443,16 +421,12 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
     }
 }
 
-pub fn router() -> Router<AppState> {
-    let protected = Router::new()
-        .route("/me", get(me))
-        .layer(middleware::from_fn(auth_middleware));
-
+pub fn router(state: AppState) -> Router<AppState> {
     let public = Router::new()
         .route("/register", post(sign_up))
         .route("/login", post(sign_in))
         .route("/logout", post(logout))
         .route("/refresh", post(refresh_handler));
 
-    Router::new().merge(protected).merge(public)
+    Router::new().merge(public)
 }

@@ -1,33 +1,22 @@
 use crate::db;
 use crate::middleware::auth::auth_middleware;
-use crate::models::refresh_token::RefreshToken;
+use crate::models::user::UserResponse;
 use crate::state::AppState;
-use crate::tokens::{RefreshClaims, decode_refresh_token};
-use crate::tokens::{issue_tokens, refresh_access_token};
 use axum::body::Bytes;
 use axum::extract::Multipart;
-use axum::extract::{ConnectInfo, Path};
-use axum::http::header::USER_AGENT;
-use axum::http::{HeaderMap, StatusCode};
-use axum::http::{HeaderValue, header};
-use axum::response::{IntoResponse, Response};
+use axum::extract::Path;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Extension, Json, Router, extract::State, middleware, routing::post};
-use axum_extra::extract::CookieJar;
-use chrono::TimeZone;
-use jsonwebtoken::{DecodingKey, Validation, decode};
-use jsonwebtoken::{EncodingKey, Header, encode};
-use nanoid::format;
-use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std;
-use std::io::Error;
-use std::net::SocketAddr;
-use std::{env, io};
+use std::io;
 use tokio::fs;
 use uuid::Uuid;
-async fn getUser(State(state): State<AppState>, Path(user_id): Path<String>) -> impl IntoResponse {
+
+async fn get_user(State(state): State<AppState>, Path(user_id): Path<String>) -> impl IntoResponse {
     let uid: i64 = match user_id.parse() {
         Ok(id) => id,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -172,13 +161,43 @@ async fn update_bio(
         }
     }
 }
+async fn me(
+    State(state): State<AppState>,
+    Extension(user_id): Extension<String>,
+) -> impl IntoResponse {
+    let uid: i64 = match user_id.parse() {
+        Ok(id) => id,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
 
-pub fn router() -> Router<AppState> {
+    let user = match db::users::find_by_id(&state.pool, uid).await {
+        Ok(user) => user,
+        Err(e) => {
+            eprintln!("DB Error finding user: {:?}", e);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    let user = match user {
+        Some(u) => u,
+        None => return (StatusCode::UNAUTHORIZED, "Invalid credentials").into_response(),
+    };
+
+    let response_data = UserResponse::from(user);
+
+    (StatusCode::OK, Json(json!(response_data))).into_response()
+}
+
+pub fn router(state: AppState) -> Router<AppState> {
     let protected = Router::new()
+        .route("/me", get(me))
         .route("/upload", post(upload_avatar))
         .route("/update_bio", post(update_bio))
-        .route("/{user_id}", get(getUser))
-        .layer(middleware::from_fn(auth_middleware));
+        .route("/{user_id}", get(get_user))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
 
     Router::new().merge(protected)
 }

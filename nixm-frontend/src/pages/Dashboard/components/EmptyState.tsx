@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, ApiError } from '@/lib/api/api';
-import { User } from '@/lib/api/modules/auth';
+import { User } from '@/lib/api/modules/users';
 import { ws } from '@/lib/websocket/service';
 import { MSG_CHAT_REQUEST } from '@/lib/websocket/typing/definitions';
 
