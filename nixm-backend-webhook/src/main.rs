@@ -118,18 +118,12 @@ async fn wait_for_assets(
     }
 }
 
-fn download_asset(url: &str, dest: &Path) -> anyhow::Result<()> {
-    info!("Downloading: {url} -> {}", dest.display());
-
-    let resp = reqwest::blocking::get(url)?;
-    if !resp.status().is_success() {
-        return Err(anyhow::anyhow!("HTTP {}", resp.status()));
+async fn download_asset(url: &str, dest: &Path) -> anyhow::Result<()> {
+    let bytes = reqwest::get(url).await?.bytes().await?;
+    if bytes.is_empty() {
+        return Err(anyhow::anyhow!("Empty response"));
     }
-
-    let bytes = resp.bytes()?;
     fs::write(dest, &bytes)?;
-
-    info!("Downloaded OK: {} bytes", bytes.len());
     Ok(())
 }
 
@@ -202,8 +196,11 @@ async fn release_webhook(
     let tag = &payload.release.tag_name;
     info!("Release tag: {tag}");
 
-    let base = PathBuf::from(file!()).parent().unwrap().to_path_buf();
-    let temp_dir = base.join("temp");
+    let temp_dir = std::env::current_exe()
+        .expect("Cannot get current exe path")
+        .parent()
+        .expect("Cannot get exe dir")
+        .join("temp");
 
     if temp_dir.exists() {
         info!("Removing old temp dir");
