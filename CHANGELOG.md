@@ -2,9 +2,9 @@
 
 ## Feature
 
-- E2EE мессенджер с ECDH P-256 + AES-GCM
-- WebSocket с кастомным бинарным протоколом
-- JWT авторизация с access/refresh схемой
-- Система инвайтов
-- Офлайн-очередь сообщений
-- CI/CD через webhook сервер
+- E2EE messenger with ECDH P-256 + AES-GCM
+- WebSocket with a custom binary protocol
+- JWT authentication with access/refresh scheme
+- Invite system
+- Offline message queue
+- CI/CD via webhook server
