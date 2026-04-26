@@ -36,7 +36,7 @@ impl Config {
         let repo_name = std::env::var("REPO_NAME").unwrap_or_else(|_| "Nixm".into());
         let server_path =
             PathBuf::from(std::env::var("SERVER_PATH").unwrap_or_else(|_| "../nixm".into()));
-        let port = std::env::var("BIND_ADDR").unwrap_or_else(|_| "8000".into());
+        let port = std::env::var("WEBHOOK_PORT").unwrap_or_else(|_| "8000".into());
 
         Self {
             webhook_secret,
@@ -117,7 +117,6 @@ async fn wait_for_assets(
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
-
 
 fn download_asset(url: &str, dest: &Path) -> anyhow::Result<()> {
     info!("Downloading: {url} -> {}", dest.display());
@@ -225,7 +224,7 @@ async fn release_webhook(
         &expected,
         Duration::from_secs(120),
     )
-        .await
+    .await
     {
         error!("Asset wait failed: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR;
