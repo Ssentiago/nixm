@@ -302,7 +302,9 @@ class WebSocketService extends EventEmitter<WSEventMap> {
   }
 }
 
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://localhost:5900/ws`;
+const WS_URL = import.meta.env.DEV
+  ? `ws://localhost:5900/ws`
+  : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export const ws = new WebSocketService(WS_URL, {
   reconnectDelay: 1_000,

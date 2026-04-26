@@ -79,7 +79,7 @@ def build_and_create_release(previous_version: str, new_version: str, changelog:
     backend_bin_folder = backend_folder / "target/release/"
     binary_name = get_binary_name()
     backend_binary = (
-        backend_folder / "target/x86_64-unknown-linux-gnu/release/" / binary_name
+            backend_folder / "target/x86_64-unknown-linux-gnu/release/" / binary_name
     )
 
     temp_folder = ROOT / "temp_release"
@@ -162,7 +162,7 @@ def update_versions_front_and_back(new_version: str):
 
 
 def make_version_validator(
-    previous_versions: list[str], current_version: str, is_first_enter: bool
+        previous_versions: list[str], current_version: str, is_first_enter: bool
 ) -> Callable[[str], bool]:
     def inner(version: str) -> bool | str:
         # if empty string, it means that user pressed Enter
@@ -178,7 +178,7 @@ def make_version_validator(
             return "Version already exists. Please try again."
 
         if not is_first_enter and semver.Version.parse(version) < semver.Version.parse(
-            current_version
+                current_version
         ):
             return f"Version must be greater than current version. Current version is: {current_version}. Please try again."
 
@@ -188,7 +188,7 @@ def make_version_validator(
 
 
 def input_new_version(
-    previous_versions: list[str], current_version: str, is_first_enter
+        previous_versions: list[str], current_version: str, is_first_enter
 ):
     answer = questionary.text(
         "Enter new version number or press Enter to exit: ",
@@ -302,7 +302,7 @@ def main():
         .strip()
     )
 
-    if not current_branch in ["main", "master"]:
+    if not current_branch in ["main", "master", "dev"]:
         sys.exit("Current branch must be 'main' or 'master'")
 
     subprocess.run("git reset", shell=True, check=True)
