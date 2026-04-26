@@ -151,15 +151,12 @@ def step_git_commit_push(tx: ReleaseTransaction, new_version: str, branch: str):
 
     tx.register(
         "Revert version bump commit",
-        lambda: subprocess.run("git revert --no-edit HEAD", shell=True, check=True),
-    )
+        lambda: (
+            subprocess.run("git reset --hard HEAD~1", shell=True, check=True),
+            subprocess.run(f"git push --force origin {branch}", shell=True, check=True),
+        ), )
 
     subprocess.run(f"git push origin {branch}", shell=True, check=True)
-
-    tx.register(
-        "Force-push reverted commit to remote",
-        lambda: subprocess.run(f"git push origin {branch}", shell=True, check=True),
-    )
 
     print(f"[+] Committed and pushed to {branch}")
 
