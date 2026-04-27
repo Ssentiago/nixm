@@ -1,3 +1,9 @@
+# 0.1.1
+
+## BugFixes
+
+- Fix issue with old api path for /me route on client
+
 # 0.1.0
 
 ## Feature
