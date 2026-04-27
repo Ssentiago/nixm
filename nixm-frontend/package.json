@@ -1,6 +1,7 @@
 {
   "name": "nixm-frontend",
   "version": "0.1.5",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -46,6 +47,7 @@
     "globals": "^17.4.0",
     "ix": "^7.0.0",
     "prettier": "^3.8.1",
+    "rollup-plugin-visualizer": "^7.0.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.57.1",
     "vite": "^7.0.0"
