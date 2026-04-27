@@ -32,6 +32,6 @@ export class UsersModule {
   }
 
   me() {
-    return this.api.request<User>('/me');
+    return this.api.request<User>('/users/me');
   }
 }

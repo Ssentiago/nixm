@@ -3,6 +3,7 @@ import { api, ApiError } from '@/lib/api/api';
 import { User } from '@/lib/api/modules/users';
 import { ws } from '@/lib/websocket/service';
 import { MSG_CHAT_REQUEST } from '@/lib/websocket/typing/definitions';
+import { API_BASE } from '@/lib/env';
 
 interface Props {
   onPeerResolved: (peer: { id: number; username: string } | null) => void;
@@ -97,7 +98,7 @@ export const EmptyState = ({
           <div className='w-20 h-20 rounded-full overflow-hidden bg-secondary border border-border flex items-center justify-center'>
             {peerProfile.avatar_url ? (
               <img
-                src={`http://localhost:5900${peerProfile.avatar_url}`}
+                src={`${API_BASE}${peerProfile.avatar_url}`}
                 alt='avatar'
                 className='w-full h-full object-cover'
               />

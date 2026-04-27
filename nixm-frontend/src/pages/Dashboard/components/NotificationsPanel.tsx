@@ -9,6 +9,7 @@ import {
   MSG_CHAT_DECLINED,
 } from '@/lib/websocket/typing/definitions';
 import { db } from '@/lib/db';
+import { API_BASE } from '@/lib/env';
 
 export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
   const { notifications, removeNotification } = useNotifications();
@@ -77,7 +78,7 @@ export const NotificationsPanel = ({ onClose }: { onClose: () => void }) => {
               {n.type === 'chat_request' && (
                 <div className='flex items-center gap-3'>
                   <Avatar className='w-8 h-8 shrink-0'>
-                    <AvatarImage src={`http://localhost:5900${n.avatar_url}`} />
+                    <AvatarImage src={`${API_BASE}${n.avatar_url}`} />
                     <AvatarFallback className='bg-secondary text-muted-foreground text-xs font-mono'>
                       {n.username[0].toUpperCase()}
                     </AvatarFallback>

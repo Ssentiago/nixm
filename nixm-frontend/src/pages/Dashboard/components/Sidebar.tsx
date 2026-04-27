@@ -64,11 +64,13 @@ export const Sidebar = ({
           )}
           <div className='flex items-center gap-2'>
             <Avatar className='w-6 h-6'>
-              <AvatarImage
-                src={`${API_BASE}${myProfile?.avatar_url}`}
-                alt={myProfile?.username}
-                className='object-cover rounded-full'
-              />
+              {myProfile?.avatar_url && (
+                <AvatarImage
+                  src={`${API_BASE}${myProfile.avatar_url}`}
+                  alt={myProfile.username}
+                  className='object-cover rounded-full'
+                />
+              )}
               <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono'>
                 {myProfile?.username?.[0]?.toUpperCase() ?? '?'}
               </AvatarFallback>
