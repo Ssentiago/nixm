@@ -108,7 +108,11 @@ class Api implements ApiClient {
       if (!text) {
         return undefined as T;
       }
-      return JSON.parse(text) as T;
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return text as T;
+      }
     } catch (e) {
       if (e instanceof ApiError) throw e;
 

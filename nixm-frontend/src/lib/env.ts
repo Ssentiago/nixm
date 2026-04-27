@@ -1,3 +1,3 @@
 export const API_BASE = import.meta.env.DEV
-  ? 'http://localhost:5900'
+  ? 'http://localhost:8080'
   : window.location.origin;

@@ -5,7 +5,6 @@ import { Chat } from '@/pages/Dashboard/typing/definitions';
 import { Sidebar } from '@/pages/Dashboard/components/Sidebar';
 import { EmptyState } from '@/pages/Dashboard/components/EmptyState';
 import { ChatView } from '@/pages/Dashboard/components/ChatView';
-import { ChatsOverlay } from '@/pages/Dashboard/components/ChatsOverlay';
 import { useNotifications } from '@/hooks/NotificationContext';
 import { wsRouter } from '@/lib/websocket/router';
 import {
@@ -18,13 +17,18 @@ import { logger } from '@/lib/logger';
 import { db } from '@/lib/db';
 
 const Dashboard = () => {
-  const [overlayOpen, setOverlayOpen] = useState(false);
   const [isDeclined, setIsDeclined] = useState(false);
   const pendingPeerRef = useRef<{ id: number; username: string } | null>(null);
 
   const { myProfile } = useAuth();
-  const { chats, currentChatId, openChat, handleIncomingMessage, addChat } =
-    useChatContext();
+  const {
+    chats,
+    currentChatId,
+    setActive,
+    openChat,
+    handleIncomingMessage,
+    addChat,
+  } = useChatContext();
   const { addNotification } = useNotifications();
   const myProfileRef = useRef(myProfile);
   useEffect(() => {
@@ -37,6 +41,16 @@ const Dashboard = () => {
     pendingPeerRef.current = peer;
     setIsDeclined(false);
   };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setActive(null);
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   useEffect(() => {
     logger.info('Dashboard mounted, subscribing to WS events');
@@ -145,34 +159,15 @@ const Dashboard = () => {
 
   return (
     <div className='flex h-screen w-screen bg-background text-foreground overflow-hidden relative'>
-      {!activeChat && (
-        <Sidebar
-          chats={chatList}
-          activeId={currentChatId}
-          onSelect={openChat}
-        />
-      )}
+      <Sidebar chats={chatList} activeId={currentChatId} onSelect={openChat} />
 
       {activeChat ? (
-        <ChatView
-          userId={activeChat.peerId}
-          username={activeChat.username}
-          onOpenOverlay={() => setOverlayOpen(true)}
-        />
+        <ChatView userId={activeChat.peerId} username={activeChat.username} />
       ) : (
         <EmptyState
           onPeerResolved={handlePeerResolved}
           isDeclined={isDeclined}
           onDeclinedReset={() => setIsDeclined(false)}
-        />
-      )}
-
-      {overlayOpen && (
-        <ChatsOverlay
-          chats={chatList}
-          activeId={currentChatId}
-          onSelect={openChat}
-          onClose={() => setOverlayOpen(false)}
         />
       )}
     </div>

@@ -5,17 +5,14 @@ import { useChatContext } from '@/hooks/ChatContext';
 export const ChatView = ({
   userId,
   username,
-  onOpenOverlay,
 }: {
   userId: string;
   username: string;
-  onOpenOverlay: () => void;
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState('');
   const { activeMessages, sendMessage, loadMoreHistory } = useChatContext();
 
-  // Автопрокрутка вниз при новых сообщениях
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages]);
@@ -29,7 +26,6 @@ export const ChatView = ({
 
   const handleScroll = async (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
-    // Если доскроллили до верха — грузим историю
     if (el.scrollTop === 0 && activeMessages.length > 0) {
       await loadMoreHistory(userId, activeMessages[0].timestamp);
     }
@@ -48,15 +44,6 @@ export const ChatView = ({
           <p className='text-xs font-mono text-foreground tracking-tight'>
             {username}
           </p>
-        </div>
-
-        <div className='flex items-center gap-2'>
-          <button
-            onClick={onOpenOverlay}
-            className='text-[10px] font-mono text-muted-foreground/60 hover:text-foreground transition-colors border border-border px-2 py-1 rounded bg-muted/30'
-          >
-            chats ↗
-          </button>
         </div>
       </div>
 
@@ -144,13 +131,10 @@ export const ChatView = ({
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder='secure message...'
+            placeholder='enter...'
             className='flex-1 bg-transparent border-none outline-none text-xs font-mono text-foreground placeholder:text-muted-foreground/20'
           />
           <div className='flex items-center gap-2'>
-            <span className='hidden sm:block text-[9px] font-mono text-emerald-500/40 uppercase tracking-tighter'>
-              aes-256-gcm
-            </span>
             <button
               onClick={handleSend}
               disabled={!input.trim()}

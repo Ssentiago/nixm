@@ -41,6 +41,7 @@ type ChatContextType = {
   chats: Map<string, ChatMeta>;
   activeMessages: ChatMessage[];
   currentChatId: string | null;
+  setActive: (peerId: string | null) => void;
   openChat: (peerId: string, username: string) => Promise<void>;
   sendMessage: (peerId: string, text: string) => Promise<void>;
   loadMoreHistory: (
@@ -149,7 +150,7 @@ const useActiveChat = () => {
   const [activeMessages, setActiveMessages] = useState<ChatMessage[]>([]);
   const currentChatIdRef = useRef<string | null>(null);
 
-  const setActive = useCallback((peerId: string) => {
+  const setActive = useCallback((peerId: string | null) => {
     logger.debug('ActiveChat: switching context', { peerId });
     setCurrentChatId(peerId);
     currentChatIdRef.current = peerId;
@@ -461,6 +462,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       chats: registry.chatsRef.current,
       activeMessages: active.activeMessages,
       currentChatId: active.currentChatId,
+      setActive: active.setActive,
       openChat,
       sendMessage: io.sendMessage,
       loadMoreHistory,

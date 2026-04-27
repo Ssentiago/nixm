@@ -40,6 +40,7 @@ export const InviteSection = () => {
           : e instanceof Error
             ? e.message
             : 'Failed to load invites';
+      console.log(e);
       setError(msg);
     } finally {
       setLoading(false);
