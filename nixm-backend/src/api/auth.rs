@@ -1,26 +1,17 @@
 use crate::db;
-use crate::middleware::auth::auth_middleware;
 use crate::models::refresh_token::RefreshToken;
-use crate::models::user::UserResponse;
-use crate::service::tokens::RefreshClaims;
 use crate::state::AppState;
 use axum::extract::ConnectInfo;
 use axum::http::header::USER_AGENT;
 use axum::http::{HeaderMap, StatusCode};
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use axum::{Extension, Json, Router, extract::State, middleware, routing::post};
+use axum::{Json, Router, extract::State, routing::post};
 use axum_extra::extract::CookieJar;
 use chrono::TimeZone;
-use jsonwebtoken::{DecodingKey, Validation, decode};
-use jsonwebtoken::{EncodingKey, Header, encode};
-use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
-use std::env;
 use std::net::SocketAddr;
-use std::sync::OnceLock;
 
 #[derive(Deserialize)]
 struct RegistrationRequest {
@@ -297,16 +288,12 @@ async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoRespo
         None => return StatusCode::OK.into_response(), // Куки нет — считаем успешным выходом
     };
 
-    if let Ok(token_data) = decode::<RefreshClaims>(
-        &refresh_token,
-        &DecodingKey::from_secret(get_secret()),
-        &Validation::default(),
-    ) {
-        let user_id: i64 = match token_data.claims.sub.parse() {
+    if let Ok(token_data) = state.token_service.decode_refresh_token(&refresh_token) {
+        let user_id: i64 = match token_data.sub.parse() {
             Ok(id) => id,
             Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         };
-        let jti = &token_data.claims.jti;
+        let jti = &token_data.jti;
 
         let _ = db::refresh_tokens::revoke(&state.pool, user_id, jti).await;
     }
@@ -337,11 +324,7 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
 
     println!("[refresh] token found, decoding...");
 
-    let token_data = match decode::<RefreshClaims>(
-        &refresh_token,
-        &DecodingKey::from_secret(get_secret()),
-        &Validation::default(),
-    ) {
+    let token_data = match state.token_service.decode_refresh_token(&refresh_token) {
         Ok(data) => data,
         Err(e) => {
             println!("[refresh] decode failed: {e}");
@@ -349,14 +332,14 @@ pub async fn refresh_handler(State(state): State<AppState>, jar: CookieJar) -> R
         }
     };
 
-    let user_id: i64 = match token_data.claims.sub.parse() {
+    let user_id: i64 = match token_data.sub.parse() {
         Ok(id) => id,
         Err(e) => {
             println!("[refresh] user_id parse failed: {e}");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let jti = &token_data.claims.jti;
+    let jti = &token_data.jti;
     println!("[refresh] user_id={user_id}, jti={jti}");
 
     match db::refresh_tokens::is_valid(&state.pool, &user_id, jti).await {
