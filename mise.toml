@@ -1,0 +1,22 @@
+[tools]
+python = "3.13"
+node = "22"
+
+[settings]
+python.github_attestations = false
+
+[tasks.release]
+description = "Release new version"
+run = "uv run scripts/tools/release.py"
+
+[tasks."build:frontend"]
+description = "Build frontend"
+run = "cd nixm-frontend && bun run build"
+
+[tasks."build:backend"]
+description = "Build backend"
+run = "cd nixm-backend && cross build --release --target x86_64-unknown-linux-gnu"
+
+[tasks.build]
+description = "Build all"
+depends = ["build:frontend", "build:backend"]
