@@ -15,7 +15,9 @@ export const AvatarSection = () => {
     console.log(JSON.stringify(myProfile));
   }, [myProfile]);
 
-  const avatarUrl = `${API_BASE}${myProfile?.avatar_url}`;
+  const avatarUrl = myProfile?.avatar_url
+    ? `${API_BASE}${myProfile?.avatar_url}`
+    : null;
   const initials = myProfile?.username?.[0]?.toUpperCase() ?? '?';
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
