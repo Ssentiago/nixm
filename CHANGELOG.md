@@ -1,3 +1,9 @@
+# 0.1.6
+
+## bugfixes
+
+- fix
+
 # 0.1.5
 
 ## bugfixes
