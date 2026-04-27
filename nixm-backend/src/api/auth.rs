@@ -22,16 +22,6 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
-static SECRET: OnceCell<Vec<u8>> = OnceCell::new();
-
-fn get_secret() -> &'static [u8] {
-    SECRET.get_or_init(|| {
-        env::var("SECRET")
-            .expect("SECRET environment variable must be set")
-            .into_bytes()
-    })
-}
-
 #[derive(Deserialize)]
 struct RegistrationRequest {
     username: String,
