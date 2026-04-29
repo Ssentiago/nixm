@@ -1,3 +1,9 @@
+# 0.1.1
+
+## Miscellaneous
+
+- Remove global lowercase text transform
+
 # 0.1.0
 
 Initial release of nixm — a self-hosted E2EE messenger.
