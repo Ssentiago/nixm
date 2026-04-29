@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM user_invite_links\n        WHERE id = $1 AND user_id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ea4f666fb757b9ec789d3e458a8b54d10f207bbeffc74e93f9b0c6e1a100d598"
+}

@@ -87,7 +87,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -290,3 +289,5 @@ __marimo__/
 
 
 .idea
+
+nixm-backend/avatars/

@@ -1,0 +1,18 @@
+use crate::service::tokens::TokenService;
+use sqlx::PgPool;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::{RwLock, mpsc};
+
+pub struct WsSender {
+    pub sender: mpsc::UnboundedSender<Vec<u8>>,
+    pub last_keepalive: Instant,
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub token_service: Arc<TokenService>,
+    pub connections: Arc<RwLock<HashMap<(i64, String), WsSender>>>,
+}

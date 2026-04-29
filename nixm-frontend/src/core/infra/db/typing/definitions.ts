@@ -1,0 +1,37 @@
+export interface KeyRecord {
+  id: string;
+  privateKey: string;
+  publicKey: string;
+  deviceId: string;
+}
+
+export type PublicKeyData = Omit<KeyRecord, 'privateKey'>;
+
+export type MessageStatus =
+  | 'pending'
+  | 'sent'
+  | 'delivered'
+  | 'read'
+  | 'failed';
+
+export interface StoredMessage {
+  messageId: string;
+  senderDeviceId: string;
+  from: string;
+  to: string;
+  peerId: string;
+  direction: 'sent' | 'received';
+  ciphertext: string;
+  iv: string;
+  timestamp: number;
+  status: MessageStatus;
+  system?: boolean;
+}
+
+export interface ChatRecord {
+  peerId: string;
+  username: string;
+  lastMessage: string;
+  lastActivity: number;
+  unreadCount: number;
+}
