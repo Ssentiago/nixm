@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_invite_links (\n            user_id,\n            code,\n            type,\n            expires_at\n        )\n        VALUES ($1, $2, $3, $4)\n        RETURNING\n            id,\n            code,\n            type as \"invite_type\",\n            expires_at,\n            use_count,\n            revoked,\n            created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "invite_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "use_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "revoked",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Varchar",
+        "Varchar",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e957d0d1b9d0323dcc01962505854bb5b8356878d6507c45567b1ef5de8d679c"
+}

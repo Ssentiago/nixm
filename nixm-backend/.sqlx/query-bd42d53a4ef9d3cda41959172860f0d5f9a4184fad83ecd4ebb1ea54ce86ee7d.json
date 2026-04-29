@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE user_invite_links\n        SET revoked = true,\n            revoked_at = NOW(),\n            expires_at = LEAST(expires_at, NOW())  -- сразу помечаем как истёкшую\n        WHERE id = $1\n          AND user_id = $2\n          AND NOT revoked\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bd42d53a4ef9d3cda41959172860f0d5f9a4184fad83ecd4ebb1ea54ce86ee7d"
+}

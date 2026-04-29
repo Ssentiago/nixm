@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO message_payloads (message_id, device_id, iv, ciphertext)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (message_id, device_id) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b3a4d4f1fde3aa521d0bbfaafd7e28af1ad76548f5afde4e74c3714b882be664"
+}

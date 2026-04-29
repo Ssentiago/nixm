@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            m.message_uuid,\n            m.from_user_id,\n            m.to_user_id,\n            m.timestamp,\n            mp.iv,\n            mp.ciphertext\n        FROM messages m\n        JOIN message_payloads mp ON mp.message_id = m.id\n        WHERE mp.device_id = $3\n          AND m.timestamp < $4\n          AND (\n            (m.from_user_id = $1 AND m.to_user_id = $2)\n            OR\n            (m.from_user_id = $2 AND m.to_user_id = $1)\n          )\n        ORDER BY m.timestamp DESC\n        LIMIT $5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "message_uuid",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "from_user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "to_user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "timestamp",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "iv",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 5,
+        "name": "ciphertext",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "39776ba6873108faae033a59752d97ced4483096b1d39868ed2488ceb9920d63"
+}

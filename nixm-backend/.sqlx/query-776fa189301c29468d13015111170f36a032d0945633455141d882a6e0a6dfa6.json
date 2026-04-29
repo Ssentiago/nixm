@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT mp.id\n        FROM message_payloads mp\n        JOIN messages m ON m.id = mp.message_id\n        WHERE m.message_uuid = $1 AND mp.device_id = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "776fa189301c29468d13015111170f36a032d0945633455141d882a6e0a6dfa6"
+}
