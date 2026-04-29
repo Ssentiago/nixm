@@ -1,0 +1,41 @@
+[tools]
+python = "3.13"
+node = "22"
+
+[settings]
+python.github_attestations = false
+
+[tasks."backend:build"]
+run = "cd nixm-backend && cargo build --release"
+
+[tasks."backend:run"]
+run = "cd nixm-backend && cargo run --bin nixm-backend"
+
+[tasks."backend:migrate"]
+run = "cd nixm-backend && cargo run --bin migrate"
+
+[tasks."backend:sqlx-prepare"]
+run = "cd nixm-backend && cargo sqlx prepare"
+
+[tasks."frontend:build"]
+run = "cd nixm-frontend && bun run build"
+
+[tasks."frontend:dev"]
+run = "cd nixm-frontend && bun run dev"
+
+[tasks."webhook:build"]
+run = "cd nixm-webhook && cargo build --release"
+
+[tasks."webhook:run"]
+run = "cd nixm-webhook && cargo run"
+
+[tasks.dev]
+description = "Run backend + frontend in dev mode"
+depends = ["backend:run", "frontend:dev"]
+
+[tasks.build]
+description = "Build backend and frontend"
+depends = ["backend:build", "frontend:build"]
+
+[tasks.release]
+run = "uv run scripts/tools/release.py"
