@@ -75,7 +75,7 @@ export const Sidebar = ({
                 {myProfile?.username?.[0]?.toUpperCase() ?? '?'}
               </AvatarFallback>
             </Avatar>
-            <span className='text-xs font-mono text-muted-foreground text-normal'>
+            <span className='text-xs font-mono text-muted-foreground '>
               {myProfile?.username ?? 'unknown'}
             </span>
             {import.meta.env.DEV && (

@@ -78,7 +78,7 @@ export const EmptyState = ({
                 onChange={e => setCode(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleResolve()}
                 placeholder='invite code...'
-                className='flex-1 bg-muted border border-border rounded px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/30 outline-none focus:border-muted-foreground/40 text-normal'
+                className='flex-1 bg-muted border border-border rounded px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/30 outline-none focus:border-muted-foreground/40 '
               />
               <button
                 onClick={handleResolve}
@@ -103,18 +103,18 @@ export const EmptyState = ({
                 className='w-full h-full object-cover'
               />
             ) : (
-              <span className='text-2xl font-mono text-muted-foreground text-normal'>
+              <span className='text-2xl font-mono text-muted-foreground '>
                 {peerProfile.username[0].toUpperCase()}
               </span>
             )}
           </div>
 
           <div className='text-center'>
-            <p className='text-sm font-mono text-foreground text-normal'>
+            <p className='text-sm font-mono text-foreground '>
               {peerProfile.username}
             </p>
             {peerProfile.bio && (
-              <p className='text-xs font-mono text-muted-foreground/60 mt-1 text-normal'>
+              <p className='text-xs font-mono text-muted-foreground/60 mt-1 '>
                 {peerProfile.bio}
               </p>
             )}

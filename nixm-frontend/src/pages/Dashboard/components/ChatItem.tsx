@@ -20,14 +20,14 @@ export const ChatItem = ({
     }`}
   >
     <Avatar className='w-10 h-10 shrink-0'>
-      <AvatarFallback className='bg-muted border border-border text-foreground text-sm font-mono text-normal'>
+      <AvatarFallback className='bg-muted border border-border text-foreground text-sm font-mono '>
         {chat.username[0].toUpperCase()}
       </AvatarFallback>
     </Avatar>
     <div className='flex-1 min-w-0'>
       <div className='flex items-center justify-between'>
         <span
-          className={`text-sm font-mono truncate text-normal ${active ? 'text-foreground' : 'text-foreground/80'}`}
+          className={`text-sm font-mono truncate  ${active ? 'text-foreground' : 'text-foreground/80'}`}
         >
           {chat.username}
         </span>
@@ -38,7 +38,7 @@ export const ChatItem = ({
           })}
         </span>
       </div>
-      <p className='text-xs text-muted-foreground truncate mt-0.5 text-normal'>
+      <p className='text-xs text-muted-foreground truncate mt-0.5 '>
         {chat.lastMessage}
       </p>
     </div>

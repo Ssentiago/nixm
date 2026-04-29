@@ -37,11 +37,11 @@ export const ChatView = ({
       <div className='flex items-center justify-between px-4 py-3 border-b border-border shrink-0'>
         <div className='flex items-center gap-3'>
           <Avatar className='w-7 h-7 border border-border'>
-            <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono text-normal'>
+            <AvatarFallback className='bg-secondary text-muted-foreground text-[10px] font-mono '>
               {username[0].toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <p className='text-xs font-mono text-foreground tracking-tight text-normal'>
+          <p className='text-xs font-mono text-foreground tracking-tight '>
             {username}
           </p>
         </div>

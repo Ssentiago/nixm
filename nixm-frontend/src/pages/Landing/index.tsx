@@ -53,7 +53,7 @@ const Landing: FC = () => {
             </Button>
           </div>
 
-          <p className='text-sm text-muted-foreground mt-8 text-normal'>
+          <p className='text-sm text-muted-foreground mt-8 '>
             Apache 2.0 • Sentiago
           </p>
         </div>
