@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { SearchBar } from '@/pages/Dashboard/components/SearchBar';
 import { ChatItem } from '@/pages/Dashboard/components/ChatItem';
 import { useAuth } from '@/hooks/AuthContext';
-import { FaGear } from 'react-icons/fa6';
+import { FaGear, FaArrowRightFromBracket, FaBell } from 'react-icons/fa6';
 import { Settings } from './Settings/Settings';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useNotifications } from '@/hooks/NotificationContext';
@@ -25,7 +25,7 @@ export const Sidebar = ({
     : chats;
   const { notifications } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
-  const { myProfile } = useAuth();
+  const { myProfile, logout } = useAuth();
   const [openSettings, setOpenSettings] = useState(false);
 
   return (
@@ -89,7 +89,7 @@ export const Sidebar = ({
                 onClick={() => setShowNotifications(v => !v)}
                 className='relative p-1 hover:bg-muted rounded-md transition-colors'
               >
-                <span className='text-xs'>🔔</span>
+                <FaBell className='w-3.5 h-3.5' />
                 {notifications.length > 0 && (
                   <span className='absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full text-[8px] font-mono text-white flex items-center justify-center'>
                     {notifications.length}
@@ -101,6 +101,9 @@ export const Sidebar = ({
                 className='p-1 hover:bg-muted rounded-md transition-colors'
               >
                 <FaGear size={16} />
+              </button>
+              <button onClick={logout} title={'Logout'}>
+                <FaArrowRightFromBracket />
               </button>
             </div>
           </div>
