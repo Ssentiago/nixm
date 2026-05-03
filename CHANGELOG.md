@@ -1,3 +1,9 @@
+# 0.2.0
+
+## Features
+
+- Add logout button and change notifications emoji to use FaBell
+
 # 0.1.1
 
 ## Miscellaneous
