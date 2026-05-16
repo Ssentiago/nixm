@@ -1,0 +1,27 @@
+[project]
+name = "nixm"
+repo = "Ssentiago/nixm"
+branches = ["main"]
+changelog_type = "conventional"
+changelog = "CHANGELOG.md"
+release_mode = "local"
+
+[[components]]
+name = "nixm-backend"
+path = "nixm-backend/"
+build = "cross build --release --target x86_64-unknown-linux-gnu --no-default-features"
+artifact = "target/x86_64-unknown-linux-gnu/release/nixm-backend"
+zip = false
+
+[[components.version_files]]
+file = "Cargo.toml"
+
+[[components]]
+name = "nixm-frontend"
+path = "nixm-frontend/"
+build = "bun run build"
+artifact = "dist/"
+zip = true
+
+[[components.version_files]]
+file = "package.json"
